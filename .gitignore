@@ -1,0 +1,25 @@
+# macOS noise
+.DS_Store
+
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local tooling caches/environments
+.venv/
+.ruff_cache/
+
+artifacts
+tmp/
+
+**/*.aux
+**/*.log
+**/*.out
+**/*.pdf
+**/*.synctex.gz
+**/*.fls
+**/*.fdb_latexmk
+**/PineTools_splits

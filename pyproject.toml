@@ -1,0 +1,42 @@
+[project]
+name = "omscs-ml-rl"
+version = "0.1.0"
+description = "Reinforcement learning workspace for the OMSCS ML course"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.14.1",
+]
+
+[tool.setuptools]
+packages = []
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+ignore = [
+    "F403",
+    "F405",
+]
+
+[tool.coverage.run]
+omit = [
+    "**/__init__.py",
+    "tests/*",
+    "tests/**",
+]
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "DEBUG"
+log_cli_format = "[%(levelname)s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]

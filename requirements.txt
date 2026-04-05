@@ -1,0 +1,19 @@
+# Requirements for Reinforcement Learning assignment (RL Report)
+# Core RL environment
+gymnasium
+
+# Deep learning
+torch
+
+# Data & visualization
+pandas
+polars
+numpy
+scipy
+matplotlib
+plotly
+seaborn
+scikit-learn
+
+# Utilities
+tqdm
