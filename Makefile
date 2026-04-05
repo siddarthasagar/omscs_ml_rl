@@ -11,6 +11,9 @@ setup: ## Create venv and sync prod dependencies
 	uv venv --clear
 	uv sync
 
+add-deps: ## Add dependencies from requirements.txt via uv when present
+	@if [ -f requirements.txt ]; then uv add -r requirements.txt; else echo "requirements.txt not found"; fi	
+
 dev: ## Create venv and sync dev dependencies
 	uv venv --clear
 	uv sync --dev --all-extras
