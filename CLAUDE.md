@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Purpose
 
-OMSCS ML — Reinforcement Learning coursework. Modeled after the sibling `omscs_ml_ul` project.
+OMSCS ML — Reinforcement Learning coursework (CS7641). Modeled after the sibling `omscs_ml_ul` project.
 
 ## Commands
 
@@ -20,27 +20,25 @@ make clean      # remove .venv, caches, __pycache__
 make run        # python main.py
 ```
 
-Run a long job with sleep prevention (inline or detached):
+Run a long job with sleep prevention:
 ```bash
-bash ml_run.sh "make <target>"
-bash ml_run.sh --detach "make <target>" [session_name]
+bash ml_run.sh "make <target>"                      # inline with caffeinate/systemd-inhibit
+bash ml_run.sh --detach "make <target>" [session]   # background tmux/screen
 ```
+
+## Design Principles
+
+See `documents/steering/` — `structure.md`, `tech.md`, and `product.md` are the authoritative source for all design decisions, naming conventions, and patterns.
 
 ## Structure
 
 ```
-src/            # importable library code
-scripts/        # one-off runner scripts
-tests/          # pytest suite
-artifacts/      # generated outputs (gitignored): figures, logs, metrics, tables, metadata
-data/           # raw datasets (gitignored contents)
-documents/      # specs, ADRs, course materials
-tmp/            # scratch space (gitignored)
+src/            # importable library (config, algorithms, envs, utils)
+scripts/        # one script per phase + final report-table generator
+tests/          # pytest gates (run before advancing phases)
+artifacts/      # gitignored: logs/ metrics/ figures/ metadata/ tables/
+data/           # raw datasets
+documents/
+  steering/     # always-loaded context: product.md, structure.md, tech.md
+  canvas/       # assignment brief (read-only)
 ```
-
-## Tooling
-
-- **uv** for dependency management (`uv sync`, `uv add`)
-- **ruff** for lint + format (configured in `pyproject.toml`, ignores F403/F405)
-- **pytest** with debug-level CLI logging
-- **ml_run.sh** wraps any command with `caffeinate` (macOS) or `systemd-inhibit` (Linux) to prevent sleep during long runs
