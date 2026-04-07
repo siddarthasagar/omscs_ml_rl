@@ -30,7 +30,7 @@ Reported as: VI/PI convergence curves show a single planning trace (no seed band
 
 ## Comparison Axes
 
-DP and model-free methods are **not** comparable on a shared sample-efficiency axis. Three separate comparisons only:
+DP and model-free methods are **not** comparable on a shared sample-efficiency axis. Five separate comparison outputs — never merged:
 
 | Comparison | X-axis | Regime | Methods |
 |---|---|---|---|
@@ -38,9 +38,13 @@ DP and model-free methods are **not** comparable on a shared sample-efficiency a
 | Learning efficiency | Episodes | controlled | SARSA vs Q-Learning, per MDP |
 | Stability | — (aggregate stat) | controlled | SARSA vs Q-Learning, per MDP |
 | Final performance | — (aggregate stat) | tuned | All methods, per MDP |
-| Wall-clock cost | Seconds | both / n/a | All methods, per MDP |
+| Wall-clock cost | Seconds | controlled-run only (model-free) | All methods, per MDP |
 
 Five separate comparison outputs — never merged into one chart. Regime is fixed per chart (see Phase 6). Primary learning-curve axis is **episodes** (per FAQ). Cumulative steps logged as secondary column in all model-free CSVs, not used as a chart axis.
+
+**Wall-clock accounting rule:** model-free bars represent the **controlled-regime final reporting run** (5 seeds × full episode budget under the fixed baseline schedule). HP search cost is reported separately as a one-time overhead note in the chart caption — same pattern as CartPole model-build overhead. Tuned-regime run cost is not included in the bar.
+
+**Model-free convergence rule:** `convergence_episode` = first episode E where `|mean_return(E-W:E) − mean_return(E-2W:E-W)| < RL_CONVERGENCE_DELTA` for `RL_CONVERGENCE_M` consecutive window-pairs. Constants in `config.py`: `W=100`, `RL_CONVERGENCE_DELTA=0.01`, `RL_CONVERGENCE_M=3`. Applied per-seed; `convergence_episode_iqr` is the IQR of per-seed convergence episodes across the 5 seeds.
 
 ---
 
@@ -210,7 +214,7 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 - Re-run staged HP search (all-5-seed scored) for CartPole-specific scales
 - **Primary comparison (controlled):** both algorithms under same fixed baseline schedule (`ε: 1.0 → 0.01 over 10k steps, floor 0.01`) — same schedule as Phase 4 controlled runs
 - **Follow-up:** per-algorithm tuned schedules; compare to controlled result
-- Discretization interaction: champion configs under coarse/default/fine grids
+- Discretization interaction: **tuned regime only** — champion configs (per-algorithm tuned schedule) under coarse/default/fine grids. Purpose is best-achievable performance per grid; controlled regime would conflate exploration adequacy with binning quality.
 - Primary x-axis: **episodes**. Cumulative steps logged.
 
 **Figures → `artifacts/figures/phase5_model_free_cartpole/`:**
@@ -222,7 +226,7 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 
 **Metrics → `artifacts/metrics/phase5_model_free_cartpole/`:**
 - `sarsa_curves.csv`, `qlearning_curves.csv` — regime, seed, episode, cumulative_steps, mean_episode_len, epsilon (`regime`: `controlled` or `tuned`)
-- `discretization_study.csv` — grid, algorithm, seed, final_mean_len, convergence_episode
+- `discretization_study.csv` — regime, grid, algorithm, seed, final_mean_len, convergence_episode (`regime` is always `tuned` for this study)
 - `summary_per_seed.csv` — regime, algorithm, seed, final_mean_len, convergence_episode
 - `summary_aggregate.csv` — regime, algorithm, mean_final_len, final_window_iqr, mean_convergence_episode, convergence_episode_iqr
 
@@ -232,7 +236,7 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 
 ### Phase 6 — Cross-Method Comparison
 
-**Goal:** Honest side-by-side using correct axes per method type — three separate charts.
+**Goal:** Honest side-by-side using correct axes per method type — five separate outputs with fixed regime assignments.
 
 **Tasks:**
 - Load phase 2–5 metadata JSONs
@@ -247,6 +251,8 @@ Regime assignment is fixed and must not be mixed across charts:
 - Controlled regime → charts 2 and 3 only
 - Tuned regime → chart 5 only
 - DP methods have no regime distinction (single deterministic planning run)
+
+**CartPole grid contract:** all Phase 6 CartPole cross-method outputs use the **default grid `(3,3,8,12)` only**. The coarse/fine ablations are scoped to Phases 3 and 5. This ensures all CartPole bars in Phase 6 refer to one consistent setup.
 
 **Figures → `artifacts/figures/phase6_comparison/`:**
 - `planning_efficiency_comparison.png` — VI vs PI iterations, both MDPs
@@ -287,13 +293,18 @@ Regime assignment is fixed and must not be mixed across charts:
 - `tab_phase5_model_free_cartpole.tex`
 - `tab_phase6_comparison.tex`
 - `tab_hyperparams.tex` — ≥2 validated HPs per model, all 4 algorithms
-- `report_numbers.tex` — `\newcommand` macros for every inline number
+- `report_numbers.tex` — `\newcommand` macros for every inline number, including:
+  - `\SeedList` — exact seed list `[42, 43, 44, 45, 46]`
+  - `\WallClockBlackjackVI`, `\WallClockBlackjackPI`, `\WallClockBlackjackSARSA`, `\WallClockBlackjackQL`
+  - `\WallClockCartPoleVI`, `\WallClockCartPolePI`, `\WallClockCartPoleSARSA`, `\WallClockCartPoleQL`
+  - `\WallClockCartPoleModel` — CartPole model-build rollout cost (reported as fixed overhead)
+  - `\WallClockTotal` — sum of all above; satisfies FAQ requirement to report total experiment wall-clock
 
 **Repro output → `artifacts/repro/`:**
 
 | File | Contents | Owner |
 |---|---|---|
-| `runbook.md` | Exact Linux commands: `make dev`, `make pipeline`, seeds, expected outputs, figure paths | Generated by Phase 8 script |
+| `runbook.md` | Exact Linux commands: `make dev`, `make pipeline`, seeds, expected outputs, figure paths. Also states explicitly: **no external data files** — both environments (`Blackjack-v1`, `CartPole-v1`) are installed via `gymnasium`; all artifacts are generated by the pipeline under `artifacts/`. | Generated by Phase 8 script |
 | `ai_use_statement.md` | Draft AI-use statement for insertion into report | Manually authored, stored here before copy into Overleaf |
 | `overleaf_link.md` | READ-ONLY Overleaf project URL + confirmed accessible date | Manually recorded |
 | `submission_checklist.md` | Tracks all deliverables below | Generated by Phase 8, manually checked off |
@@ -317,8 +328,8 @@ Regime assignment is fixed and must not be mixed across charts:
 | Methods: VI, PI, SARSA, Q-Learning | §4 | — | — |
 | CartPole discretization strategy | §4 | `cartpole_discretization_study.png` | bin edges in `tab_hyperparams` |
 | VI vs PI results | §4 analysis | VI/PI convergence + policy heatmaps | `tab_phase2`, `tab_phase3` |
-| SARSA vs Q-Learning results | §4 analysis | learning curves + overlay | `tab_phase4`, `tab_phase5` |
-| Cross-method comparison | §4 analysis | planning/learning/wall-clock charts | `tab_phase6` |
+| SARSA vs Q-Learning results | §4 analysis | learning curves (controlled + tuned overlays), hyperparam sensitivity | `tab_phase4`, `tab_phase5` |
+| Cross-method comparison | §4 analysis | planning efficiency, learning efficiency (controlled), stability (controlled), wall-clock, final performance (tuned) | `tab_phase6` |
 | Hyperparameter validation | FAQ req | hyperparam sensitivity | `tab_hyperparams` |
 | Extra credit (if done) | §3.1 EC | DQN figures | from `phase7.json` |
 | Conclusion | §4 | — | — |
@@ -388,11 +399,12 @@ Regime assignment is fixed and must not be mixed across charts:
 - [ ] SARSA vs Q-Learning — tuned (per-algorithm schedule)
 - [ ] Model-free discretization interaction: grid vs final mean episode length
 
-### Cross-method (3 separate charts):
+### Cross-method (5 separate outputs — regime fixed per chart):
 - [ ] Planning efficiency: VI vs PI iterations, both MDPs
-- [ ] Learning efficiency: SARSA vs Q-Learning episodes, both MDPs
+- [ ] Learning efficiency: SARSA vs Q-Learning episodes, **controlled**, both MDPs
+- [ ] Stability: final-window IQR + convergence-episode IQR, **controlled**, both MDPs
 - [ ] Wall-clock: all methods bar chart, CartPole DP stacked (model-build + planning)
-- [ ] Final performance: all methods bar chart, both MDPs
+- [ ] Final performance: all methods, model-free **tuned**, both MDPs
 
 ### Extra Credit (if attempted):
 - [ ] DQN vs Double DQN (5 seeds, episode axis)
@@ -428,6 +440,11 @@ CARTPOLE_CLAMPS: dict = {
 # CartPole model estimation
 CARTPOLE_MODEL_ROLLOUT_STEPS: int = 500_000
 CARTPOLE_MODEL_MIN_VISITS: int = 5
+
+# Model-free convergence criterion (running-mean plateau)
+RL_CONVERGENCE_WINDOW: int = 100       # W: window size in episodes
+RL_CONVERGENCE_DELTA: float = 0.01    # minimum improvement between consecutive windows
+RL_CONVERGENCE_M: int = 3             # number of consecutive window-pairs below delta
 
 # Model-free defaults (starting point for staged HP search)
 RL_GAMMA: float = 0.99

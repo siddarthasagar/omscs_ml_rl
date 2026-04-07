@@ -18,11 +18,13 @@ Requirements:
 1. Solve **Blackjack-v1** and **CartPole-v1** with VI, PI, SARSA, and Q-Learning.
 2. CartPole requires state discretization for VI/PI and tabular methods.
 3. Validate **at least 2 hyperparameters** per model with a staged search protocol.
-4. Average all model/config comparisons over **5 independent random seeds**.
-5. Report mean ± variability bands (IQR or 95% CI) — no single-seed results.
+4. Average all model/config comparisons over **5 independent random seeds**; report exact seed list and total wall-clock.
+5. Report mean ± variability bands (IQR) — no single-seed results.
 6. Hypothesis-driven analysis — not a result dump.
 7. 8-page report (IEEE Conference template, Overleaf) + reproducibility sheet.
 8. Submit READ-ONLY Overleaf link + GitHub commit hash.
+9. Include **mandatory citations**: Sutton & Barto 2018 (Blackjack), Barto et al. 1983 (CartPole).
+10. Include **AI Use Statement** at the end of the report listing tools used and what they assisted with.
 
 ## Environment Scope
 
@@ -39,7 +41,7 @@ Requirements:
 | Policy Iteration (PI) | Model-based DP | Both |
 | SARSA | Model-free, on-policy | Both |
 | Q-Learning | Model-free, off-policy | Both |
-| DQN + Rainbow ablation | Deep RL (extra credit) | CartPole only |
+| DQN + Rainbow ablation | Deep RL (**optional extra credit — up to 5 pts**) | CartPole only |
 
 ## Libraries
 
