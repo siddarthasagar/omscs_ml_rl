@@ -2,30 +2,76 @@
 inclusion: always
 ---
 
-# Tech — CS7641 RL
+# Tech — CS7641 RL Spring 2026
 
 ## Stack
 
 - **Python:** 3.13
 - **Package manager:** uv
+- **RL environments:** `gymnasium` (`Blackjack-v1`, `CartPole-v1`)
+- **MDP utilities:** `bettermdptools` (T/R matrix construction, VI/PI wrappers), `pymdptoolbox`
 - **Data:** pandas, numpy
 - **Viz:** matplotlib
 - **Testing:** pytest
 - **Linting:** ruff
 
-> ML/RL-specific dependencies will be added here once the assignment scope is confirmed.
-
 ## Seeds
 
 | Constant | Value | Use |
 |----------|-------|-----|
-| `SEED` | 42 | All runs (expand to `SEEDS_REPORT` list if multi-seed averaging is needed) |
+| `SEEDS` | `[42, 43, 44, 45, 46]` | 5 seeds per FAQ |
+
+Seed semantics differ by method type:
+- **VI / PI:** planning is deterministic on a fixed T/R model — one planning run. Seeds apply only to **policy evaluation** rollouts (5 × N episodes against the greedy policy).
+- **SARSA / Q-Learning:** full training is stochastic — 5 seeds vary the entire training loop.
+
+No single-seed results submitted. All reported performance metrics are mean ± IQR or 95% CI across the 5 seeds.
+
+## DP Model Construction
+
+| Environment | Method |
+|---|---|
+| `Blackjack-v1` | Use `bettermdptools` built-in `Blackjack` wrapper — provides exact T and R matrices by analytic enumeration |
+| `CartPole-v1` | Estimate T and R matrices by rolling out the gym env under a uniform random policy; bin observations using the `CartPoleDiscretizer`; accumulate empirical transition counts and reward averages |
+
+## CartPole Discretization
+
+Default grid: `(3, 3, 8, 12)` for `(x, ẋ, θ, θ̇)`.
+
+Clamps before binning:
+
+| Feature | Clamp |
+|---|---|
+| Cart position x | `[-2.4, 2.4]` |
+| Cart velocity ẋ | `[-3.0, 3.0]` |
+| Pole angle θ | `[-0.2, 0.2]` |
+| Pole angular velocity θ̇ | `[-3.5, 3.5]` |
+
+Bin edges are **non-uniform**: angle and angular velocity use finer resolution near zero. Exact edges stored in `config.py` and reported verbatim in the reproducibility sheet.
+
+Test: `test_discretizer_coverage` — verifies every binned state index is in `[0, n_states)` and that the full state space is enumerable (not invertibility, which is undefined for a many-to-one map).
+
+## Hyperparameter Search Protocol (FAQ-compliant)
+
+Staged search, each stage scored over **all 5 seeds**:
+
+| Stage | Configs | Episodes/seed | Keep |
+|---|---|---|---|
+| 1 (coarse random) | 24 | 200 | top 8 by mean return |
+| 2 (promotion) | 8 | 400 | top 3 |
+| 3 (local refinement) | ±2× α, ±25% decay | 1000 | champion |
+
+Champion evaluated over 5 seeds for full episode budget. Report search protocol, ranges, budgets, and sensitivity (which hyperparameters moved the metric vs. noise).
+
+Validated hyperparameters (≥2 per model):
+- **VI/PI:** δ (convergence threshold), γ (discount)
+- **SARSA:** α schedule (start, end, decay law), ε schedule (start, floor, decay horizon)
+- **Q-Learning:** α schedule, ε schedule, γ, Q₀ initialisation strategy
 
 ## Logging Standard
 
 Every phase script calls `configure_logger(run_id)` from `src/utils/logger.py`.
-`run_id` pattern: `phase{N}_{YYYYMMDDTHHMMSS}` (e.g. `phase2_20260405T143000`).
-No bare `print()` in phase scripts. tqdm progress bars are exempt.
+`run_id` pattern: `phase{N}` (e.g. `phase2`). No bare `print()`. tqdm exempt.
 
 ## Build Commands
 

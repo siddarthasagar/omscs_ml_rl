@@ -21,14 +21,15 @@ omscs_ml_rl/
 │       └── plotting.py                # All plot_* functions
 ├── scripts/
 │   ├── run_phase_{N}_{slug}.py        # One script per phase
-│   └── run_phase_last_report_tables.py  # Generates all LaTeX tables + report_numbers.tex
+│   └── run_phase_last_report_tables.py  # Generates LaTeX tables, report_numbers.tex, and repro artifacts
 ├── tests/
 └── artifacts/                         # git-ignored runtime outputs
-    ├── logs/                          # phase{N}_{ts}.log per run
+    ├── logs/                          # phase{N}.log per run
     ├── metrics/phase{N}_{slug}/       # CSVs per phase
     ├── figures/phase{N}_{slug}/       # PNGs per phase
     ├── metadata/                      # phase{N}.json — human-checkpointable JSON per phase
-    └── tables/                        # .tex files imported by the report
+    ├── tables/                        # .tex files imported by the report
+    └── repro/                         # runbook.md, submission_checklist.md, overleaf_link.md, ai_use_statement.md (Phase 8)
 ```
 
 ## Core Design Principles
@@ -42,11 +43,13 @@ Each phase script:
 
 This enables human evaluation at each gate: review the JSON (and figures) before running the next phase. Nothing downstream runs until you're satisfied with the checkpoint.
 
-### 2. LaTeX tables generated from code — never typed by hand
+### 2. LaTeX tables and repro artifacts generated from code — never typed by hand
 
 The final phase script reads all `phase{N}.json` files and writes:
 - `artifacts/tables/tab_phase{N}_*.tex` — tabular bodies (no `\begin{table}` wrapper)
 - `artifacts/tables/report_numbers.tex` — `\newcommand` macros for every number cited inline
+- `artifacts/repro/runbook.md` — exact Linux reproduction instructions
+- `artifacts/repro/submission_checklist.md` — deliverable tracker
 
 The report does `\input{tables/report_numbers}` in its preamble and `\input{tables/tab_*}` at each table site. Numbers in prose and in tables are always in sync with the actual experiment output.
 
