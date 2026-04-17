@@ -25,3 +25,4 @@ tmp/
 **/PineTools_splits
 
 **/*.tree
+omscs_ml_rl.egg-info/

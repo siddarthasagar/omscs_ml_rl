@@ -1,0 +1,427 @@
+"""Phase 3 — Model-Based: VI & PI on CartPole (discretization ablation study).
+
+Builds T/R models for coarse/default/fine grids, runs VI and PI on each, and
+evaluates the resulting policies.  Outputs per-grid convergence curves,
+a discretization study figure, and all metric CSVs.
+
+Outputs:
+  artifacts/metrics/phase3_vi_pi_cartpole/
+    vi_convergence.csv, pi_convergence.csv
+    policy_eval_per_seed.csv, policy_eval_aggregate.csv
+    policy_agreement.csv, discretization_study.csv
+  artifacts/figures/phase3_vi_pi_cartpole/
+    cartpole_vi_convergence.png, cartpole_pi_convergence.png
+    cartpole_discretization_study.png
+  artifacts/metadata/phase3.json
+  artifacts/logs/phase3.log
+
+Usage:
+  uv run python scripts/run_phase_3_vi_pi_cartpole.py
+"""
+
+import json
+import time
+
+import numpy as np
+import pandas as pd
+
+from src.algorithms import eval_cartpole_policy, run_pi, run_vi
+from src.config import (
+    CARTPOLE_GRID_CONFIGS,
+    CARTPOLE_MODEL_MIN_VISITS,
+    CARTPOLE_MODEL_ROLLOUT_STEPS,
+    CARTPOLE_MODEL_SEED,
+    FIGURES_DIR,
+    METADATA_DIR,
+    METRICS_DIR,
+    PI_DELTA,
+    PI_GAMMA,
+    SEEDS,
+    VI_DELTA,
+    VI_GAMMA,
+    VI_PI_CONSEC_SWEEPS,
+)
+from src.envs.cartpole_discretizer import CartPoleDiscretizer
+from src.envs.cartpole_model import build_cartpole_model
+from src.utils.logger import configure_logger
+
+logger = configure_logger("phase3")
+
+N_EVAL_EPISODES = 100
+PHASE_DIR = "phase3_vi_pi_cartpole"
+GRID_NAMES = ["coarse", "default", "fine"]
+GRID_COLORS = {"coarse": "#DD8452", "default": "#4C72B0", "fine": "#55A868"}
+
+
+# ── Per-grid runner ───────────────────────────────────────────────────────────
+
+
+def _run_grid(grid_name: str) -> dict:
+    """Build model, run VI and PI, evaluate policies for one grid config."""
+    cfg = CARTPOLE_GRID_CONFIGS[grid_name]
+    disc = CartPoleDiscretizer(grid_config=cfg)
+    logger.info(
+        "=== Grid '%s': bins=%s, n_states=%d ===",
+        grid_name,
+        list(cfg["bins"]),
+        disc.n_states,
+    )
+
+    # Build T/R model for this grid
+    cp_model = build_cartpole_model(
+        discretizer=disc,
+        rollout_steps=CARTPOLE_MODEL_ROLLOUT_STEPS,
+        min_visits=CARTPOLE_MODEL_MIN_VISITS,
+        seed=CARTPOLE_MODEL_SEED,
+        logger=logger,
+    )
+    T, R = cp_model["T"], cp_model["R"]
+
+    # VI
+    logger.info("Running VI on grid '%s'...", grid_name)
+    t0 = time.perf_counter()
+    V_vi, policy_vi, trace_vi = run_vi(
+        T, R, VI_GAMMA, VI_DELTA, m_consec=VI_PI_CONSEC_SWEEPS, logger=logger
+    )
+    vi_wall = time.perf_counter() - t0
+    logger.info("VI: %d iters, %.3fs", len(trace_vi), vi_wall)
+
+    # PI
+    logger.info("Running PI on grid '%s'...", grid_name)
+    t0 = time.perf_counter()
+    V_pi, policy_pi, trace_pi = run_pi(
+        T, R, PI_GAMMA, PI_DELTA, m_consec=VI_PI_CONSEC_SWEEPS, logger=logger
+    )
+    pi_wall = time.perf_counter() - t0
+    logger.info("PI: %d iters, %.3fs", len(trace_pi), pi_wall)
+
+    # Policy agreement (non-absorbing states only)
+    n = disc.n_states
+    agreement = float((policy_vi[:n] == policy_pi[:n]).mean())
+    logger.info("Grid '%s' VI vs PI agreement: %.1f%%", grid_name, agreement * 100)
+
+    # Evaluate VI policy
+    logger.info(
+        "Evaluating VI on '%s' (%d seeds × %d eps)...",
+        grid_name,
+        len(SEEDS),
+        N_EVAL_EPISODES,
+    )
+    vi_eval = eval_cartpole_policy(
+        policy_vi, disc, seeds=SEEDS, n_episodes=N_EVAL_EPISODES
+    )
+    vi_lens = [ep_len for _, ep_len in vi_eval]
+    vi_mean = float(np.mean(vi_lens))
+    vi_iqr = float(np.percentile(vi_lens, 75) - np.percentile(vi_lens, 25))
+
+    # Evaluate PI policy
+    logger.info("Evaluating PI on '%s'...", grid_name)
+    pi_eval = eval_cartpole_policy(
+        policy_pi, disc, seeds=SEEDS, n_episodes=N_EVAL_EPISODES
+    )
+    pi_lens = [ep_len for _, ep_len in pi_eval]
+    pi_mean = float(np.mean(pi_lens))
+    pi_iqr = float(np.percentile(pi_lens, 75) - np.percentile(pi_lens, 25))
+
+    logger.info(
+        "Grid '%s': VI mean_len=%.1f, PI mean_len=%.1f",
+        grid_name,
+        vi_mean,
+        pi_mean,
+    )
+
+    return {
+        "grid_name": grid_name,
+        "bins": list(cfg["bins"]),
+        "n_states": disc.n_states,
+        "coverage_pct": cp_model["coverage_pct"],
+        "smoothed_pct": cp_model["smoothed_pct"],
+        "vi": {
+            "iters": len(trace_vi),
+            "wall_clock_s": round(vi_wall, 3),
+            "mean_episode_len": vi_mean,
+            "iqr": vi_iqr,
+            "trace": trace_vi,
+            "eval": vi_eval,
+        },
+        "pi": {
+            "iters": len(trace_pi),
+            "wall_clock_s": round(pi_wall, 3),
+            "mean_episode_len": pi_mean,
+            "iqr": pi_iqr,
+            "trace": trace_pi,
+            "eval": pi_eval,
+        },
+        "policy_agreement": agreement,
+    }
+
+
+# ── Figure helpers ────────────────────────────────────────────────────────────
+
+
+def _plot_convergence_curves(
+    grid_results: dict, algo_key: str, fig_dir, filename: str, title: str
+) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for name in GRID_NAMES:
+        res = grid_results[name]
+        trace = res[algo_key]["trace"]
+        iters = [t["iteration"] for t in trace]
+        dvs = [t["delta_v"] for t in trace]
+        ax.semilogy(
+            iters,
+            dvs,
+            label=f"{name} ({res['n_states']} states)",
+            color=GRID_COLORS[name],
+            linewidth=1.5,
+        )
+
+    delta = VI_DELTA if algo_key == "vi" else PI_DELTA
+    ax.axhline(
+        delta, color="red", linewidth=1, linestyle="--", label=f"δ = {delta:.0e}"
+    )
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("max ΔV (log scale)")
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    out = fig_dir / filename
+    fig.savefig(out, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved → %s", out)
+
+
+def _plot_discretization_study(grid_results: dict, fig_dir) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    x = list(range(len(GRID_NAMES)))
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4))
+
+    # Panel 1: mean episode length (policy quality)
+    for algo, alg_key in [("VI", "vi"), ("PI", "pi")]:
+        means = [grid_results[g][alg_key]["mean_episode_len"] for g in GRID_NAMES]
+        iqrs = [grid_results[g][alg_key]["iqr"] for g in GRID_NAMES]
+        axes[0].errorbar(
+            x, means, yerr=iqrs, label=algo, marker="o", capsize=4, linewidth=1.5
+        )
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(GRID_NAMES)
+    axes[0].set_xlabel("Grid")
+    axes[0].set_ylabel("Mean episode length")
+    axes[0].set_title("Policy quality vs grid")
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    # Panel 2: planning wall-clock time (model build included for CartPole?)
+    for algo, alg_key in [("VI", "vi"), ("PI", "pi")]:
+        walls = [grid_results[g][alg_key]["wall_clock_s"] for g in GRID_NAMES]
+        axes[1].plot(x, walls, label=algo, marker="o", linewidth=1.5)
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(GRID_NAMES)
+    axes[1].set_xlabel("Grid")
+    axes[1].set_ylabel("Planning wall-clock (s)")
+    axes[1].set_title("Planning time vs grid")
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    # Panel 3: model coverage %
+    coverages = [grid_results[g]["coverage_pct"] * 100 for g in GRID_NAMES]
+    bars = axes[2].bar(
+        x,
+        coverages,
+        color=[GRID_COLORS[g] for g in GRID_NAMES],
+        alpha=0.85,
+        edgecolor="white",
+    )
+    for bar, val in zip(bars, coverages):
+        axes[2].text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.5,
+            f"{val:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+    axes[2].set_xticks(x)
+    axes[2].set_xticklabels(GRID_NAMES)
+    axes[2].set_xlabel("Grid")
+    axes[2].set_ylabel("Coverage (%)")
+    axes[2].set_title("Model coverage vs grid")
+    axes[2].set_ylim(0, 110)
+    axes[2].grid(True, alpha=0.3, axis="y")
+
+    fig.suptitle("CartPole Discretization Study", fontsize=11, fontweight="bold")
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    out = fig_dir / "cartpole_discretization_study.png"
+    fig.savefig(out, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved → %s", out)
+
+
+def _save_figures(grid_results: dict) -> None:
+    fig_dir = FIGURES_DIR / PHASE_DIR
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("=== Phase 3 Figures ===")
+    _plot_convergence_curves(
+        grid_results,
+        "vi",
+        fig_dir,
+        "cartpole_vi_convergence.png",
+        "Value Iteration Convergence — CartPole (by grid)",
+    )
+    _plot_convergence_curves(
+        grid_results,
+        "pi",
+        fig_dir,
+        "cartpole_pi_convergence.png",
+        "Policy Iteration Convergence — CartPole (by grid)",
+    )
+    _plot_discretization_study(grid_results, fig_dir)
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+
+def run() -> None:
+    metrics_dir = METRICS_DIR / PHASE_DIR
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    METADATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    logger.info("=== Phase 3: VI & PI on CartPole (grid ablation) ===")
+    grid_results = {name: _run_grid(name) for name in GRID_NAMES}
+
+    # ── CSVs ──────────────────────────────────────────────────────────────────
+    vi_conv, pi_conv = [], []
+    eval_per_seed, eval_aggregate = [], []
+    policy_agreement_rows, study_rows = [], []
+
+    for name, res in grid_results.items():
+        for t in res["vi"]["trace"]:
+            vi_conv.append({"grid": name, **t})
+        for t in res["pi"]["trace"]:
+            pi_conv.append({"grid": name, **t})
+
+        for seed, val in res["vi"]["eval"]:
+            eval_per_seed.append(
+                {
+                    "grid": name,
+                    "algorithm": "VI",
+                    "seed": seed,
+                    "mean_episode_len": val,
+                }
+            )
+        for seed, val in res["pi"]["eval"]:
+            eval_per_seed.append(
+                {
+                    "grid": name,
+                    "algorithm": "PI",
+                    "seed": seed,
+                    "mean_episode_len": val,
+                }
+            )
+
+        for algo, alg_key in [("VI", "vi"), ("PI", "pi")]:
+            eval_aggregate.append(
+                {
+                    "grid": name,
+                    "algorithm": algo,
+                    "mean_episode_len": res[alg_key]["mean_episode_len"],
+                    "eval_episode_len_iqr": res[alg_key]["iqr"],
+                }
+            )
+            study_rows.append(
+                {
+                    "grid": name,
+                    "algorithm": algo,
+                    "mean_episode_len": res[alg_key]["mean_episode_len"],
+                    "eval_episode_len_iqr": res[alg_key]["iqr"],
+                    "iterations_to_conv": res[alg_key]["iters"],
+                    "wall_clock_s": res[alg_key]["wall_clock_s"],
+                    "coverage_pct": round(res["coverage_pct"], 4),
+                    "smoothed_pct": round(res["smoothed_pct"], 4),
+                    "rollout_steps": CARTPOLE_MODEL_ROLLOUT_STEPS,
+                }
+            )
+
+        policy_agreement_rows.append(
+            {
+                "grid": name,
+                "action_agreement_pct": round(res["policy_agreement"] * 100, 2),
+                "exact_match": res["policy_agreement"] == 1.0,
+            }
+        )
+
+    pd.DataFrame(vi_conv).to_csv(metrics_dir / "vi_convergence.csv", index=False)
+    pd.DataFrame(pi_conv).to_csv(metrics_dir / "pi_convergence.csv", index=False)
+    pd.DataFrame(eval_per_seed).to_csv(
+        metrics_dir / "policy_eval_per_seed.csv", index=False
+    )
+    pd.DataFrame(eval_aggregate).to_csv(
+        metrics_dir / "policy_eval_aggregate.csv", index=False
+    )
+    pd.DataFrame(policy_agreement_rows).to_csv(
+        metrics_dir / "policy_agreement.csv", index=False
+    )
+    pd.DataFrame(study_rows).to_csv(
+        metrics_dir / "discretization_study.csv", index=False
+    )
+    logger.info("Metrics saved → %s", metrics_dir)
+
+    # ── Figures ───────────────────────────────────────────────────────────────
+    _save_figures(grid_results)
+
+    # ── Checkpoint JSON ───────────────────────────────────────────────────────
+    checkpoint = {
+        name: {
+            "bins": res["bins"],
+            "n_states": res["n_states"],
+            "coverage_pct": round(res["coverage_pct"], 4),
+            "smoothed_pct": round(res["smoothed_pct"], 4),
+            "vi": {
+                "iterations": res["vi"]["iters"],
+                "wall_clock_s": res["vi"]["wall_clock_s"],
+                "mean_episode_len": round(res["vi"]["mean_episode_len"], 2),
+                "eval_episode_len_iqr": round(res["vi"]["iqr"], 2),
+            },
+            "pi": {
+                "iterations": res["pi"]["iters"],
+                "wall_clock_s": res["pi"]["wall_clock_s"],
+                "mean_episode_len": round(res["pi"]["mean_episode_len"], 2),
+                "eval_episode_len_iqr": round(res["pi"]["iqr"], 2),
+            },
+            "policy_agreement_pct": round(res["policy_agreement"] * 100, 2),
+        }
+        for name, res in grid_results.items()
+    }
+    phase3_path = METADATA_DIR / "phase3.json"
+    with open(phase3_path, "w") as f:
+        json.dump(checkpoint, f, indent=2)
+    logger.info("Phase 3 checkpoint saved → %s", phase3_path)
+
+    logger.info("=== Phase 3 Summary ===")
+    for name in GRID_NAMES:
+        res = grid_results[name]
+        logger.info(
+            "Grid %-8s | VI: %3d iters, len=%.1f | PI: %3d iters, len=%.1f | "
+            "coverage=%.1f%% | agreement=%.1f%%",
+            name,
+            res["vi"]["iters"],
+            res["vi"]["mean_episode_len"],
+            res["pi"]["iters"],
+            res["pi"]["mean_episode_len"],
+            res["coverage_pct"] * 100,
+            res["policy_agreement"] * 100,
+        )
+
+
+if __name__ == "__main__":
+    run()

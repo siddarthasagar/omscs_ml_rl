@@ -4,8 +4,6 @@ Each plot_* function saves a PNG to the given out_dir and returns the path.
 No bare plt.show() calls — all figures are saved to artifacts/figures/.
 """
 
-from pathlib import Path
-
 
 # Add plot_* functions here as phases are defined.
 # Pattern:

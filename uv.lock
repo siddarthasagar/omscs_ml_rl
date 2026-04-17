@@ -10,6 +10,9 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+constraints = [{ name = "pygame", specifier = ">=2.5" }]
+
 [[package]]
 name = "bettermdptools"
 version = "0.8.6"
@@ -365,10 +368,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/65/6e/09db70a523a96d25e
 [[package]]
 name = "omscs-ml-rl"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "bettermdptools" },
+    { name = "gymnasium" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
+    { name = "pandas", version = "3.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "pymdptoolbox" },
+    { name = "tqdm" },
 ]
 
 [package.optional-dependencies]
@@ -381,10 +390,15 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bettermdptools" },
+    { name = "gymnasium" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
     { name = "pymdptoolbox" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
+    { name = "tqdm" },
 ]
 provides-extras = ["dev"]
 

@@ -20,11 +20,14 @@ make clean      # remove .venv, caches, __pycache__
 make run        # python main.py
 ```
 
-Run a long job with sleep prevention:
+Run experiment phases (always via ml_run.sh — never direct uv/python):
 ```bash
-bash ml_run.sh "make <target>"                      # inline with caffeinate/systemd-inhibit
-bash ml_run.sh --detach "make <target>" [session]   # background tmux/screen
+make phase1                                         # inline, sleep-prevention active
+bash ml_run.sh --detach "make phase1" [session]     # background tmux/screen session
 ```
+
+All `make phase{N}` targets wrap the script in `bash ml_run.sh` automatically.
+Use `--detach` for anything expected to run longer than a few minutes.
 
 ## Design Principles
 
