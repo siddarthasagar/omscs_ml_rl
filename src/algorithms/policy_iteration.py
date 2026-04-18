@@ -107,7 +107,20 @@ def run_pi(
                 elapsed,
             )
 
-        if policy_changes == 0 or v_converged:
+        if policy_changes == 0:
+            trace[-1]["stop_reason"] = "policy_stable"
+            break
+        if v_converged:
+            trace[-1]["stop_reason"] = "value_threshold"
+            if logger:
+                logger.warning(
+                    "  PI iter %d: stopping on value threshold (delta_v=%.2e < %.2e) "
+                    "but policy_changes=%d — full policy convergence not reached",
+                    it,
+                    dv,
+                    delta,
+                    policy_changes,
+                )
             break
 
     return V, policy, trace

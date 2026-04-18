@@ -74,6 +74,8 @@ CARTPOLE_GRID_CONFIGS: dict[str, dict] = {
             2.00,
             3.50,
         ],
+        # 72 SA pairs — 500 k steps is sufficient for >85 % coverage
+        "rollout_steps": 500_000,
     },
     "default": {
         "bins": (3, 3, 8, 12),
@@ -81,6 +83,8 @@ CARTPOLE_GRID_CONFIGS: dict[str, dict] = {
         "xdot_edges": CARTPOLE_XDOT_EDGES,
         "theta_edges": CARTPOLE_THETA_EDGES,
         "thetadot_edges": CARTPOLE_THETADOT_EDGES,
+        # 1 728 SA pairs — 2 M steps targets ≥80 % coverage
+        "rollout_steps": 2_000_000,
     },
     "fine": {
         "bins": (5, 5, 10, 16),
@@ -118,17 +122,25 @@ CARTPOLE_GRID_CONFIGS: dict[str, dict] = {
             2.50,
             3.50,
         ],
+        # 8 000 SA pairs — 5 M steps; coverage will be partial, reported explicitly
+        "rollout_steps": 5_000_000,
     },
 }
 
 # ── CartPole model estimation ─────────────────────────────────────────────────
-CARTPOLE_MODEL_ROLLOUT_STEPS: int = 500_000
+CARTPOLE_MODEL_ROLLOUT_STEPS: int = 2_000_000
 CARTPOLE_MODEL_MIN_VISITS: int = (
     5  # (s, a) pairs below this count are flagged as sparse
 )
 CARTPOLE_MODEL_SEED: int = (
     0  # fixed seed for model-construction rollout; persisted in phase1.json
 )
+
+# ── VI / PI hyperparameter validation sweep ───────────────────────────────────
+# Gamma sweep: hold delta fixed at reference, vary gamma.
+# Delta sweep: hold gamma fixed at reference, vary delta.
+VI_PI_HP_GAMMA_VALUES: list[float] = [0.85, 0.90, 0.95, 0.99]
+VI_PI_HP_DELTA_VALUES: list[float] = [1e-2, 1e-3, 1e-4, 1e-6]
 
 # ── Model-free convergence criterion (running-mean plateau) ───────────────────
 RL_CONVERGENCE_WINDOW: int = 100  # W: window size in episodes

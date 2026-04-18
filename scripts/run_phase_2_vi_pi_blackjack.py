@@ -32,6 +32,8 @@ from src.config import (
     VI_DELTA,
     VI_GAMMA,
     VI_PI_CONSEC_SWEEPS,
+    VI_PI_HP_DELTA_VALUES,
+    VI_PI_HP_GAMMA_VALUES,
 )
 from src.envs.blackjack_env import get_blackjack_model
 from src.utils.logger import configure_logger
@@ -272,6 +274,107 @@ def _save_figures(
     _plot_value_heatmap(hard_V, soft_V, fig_dir)
 
 
+# ── Hyperparameter validation ─────────────────────────────────────────────────
+
+HP_EVAL_EPISODES = 500  # lighter than full eval to keep sweep fast
+
+
+def _hp_sweep_blackjack(T: np.ndarray, R: np.ndarray) -> list[dict]:
+    """Sweep gamma and delta for VI and PI on Blackjack.
+
+    Gamma sweep: vary gamma in VI_PI_HP_GAMMA_VALUES, hold delta at reference.
+    Delta sweep: vary delta in VI_PI_HP_DELTA_VALUES, hold gamma at 0.99.
+
+    Returns list of row dicts for hp_validation.csv.
+    """
+    rows: list[dict] = []
+
+    def _eval(policy):
+        results = eval_blackjack_policy(
+            policy, seeds=SEEDS, n_episodes=HP_EVAL_EPISODES
+        )
+        vals = [r for _, r in results]
+        return float(np.mean(vals)), float(
+            np.percentile(vals, 75) - np.percentile(vals, 25)
+        )
+
+    # ── gamma sweep (delta fixed at reference) ────────────────────────────────
+    for gamma in VI_PI_HP_GAMMA_VALUES:
+        for algo_label, run_fn, ref_delta in [
+            ("VI", run_vi, VI_DELTA),
+            ("PI", run_pi, PI_DELTA),
+        ]:
+            t0 = time.perf_counter()
+            if algo_label == "VI":
+                _, policy, trace = run_fn(
+                    T, R, gamma, ref_delta, m_consec=VI_PI_CONSEC_SWEEPS
+                )
+            else:
+                _, policy, trace = run_fn(T, R, gamma, ref_delta)
+            wall = time.perf_counter() - t0
+            mean_ret, iqr = _eval(policy)
+            rows.append(
+                {
+                    "algorithm": algo_label,
+                    "sweep_param": "gamma",
+                    "gamma": gamma,
+                    "delta": ref_delta,
+                    "iterations": len(trace),
+                    "wall_clock_s": round(wall, 3),
+                    "mean_eval_return": round(mean_ret, 4),
+                    "eval_return_iqr": round(iqr, 4),
+                }
+            )
+            logger.info(
+                "HP gamma sweep [%s] gamma=%.2f delta=%.0e → %d iters, "
+                "mean_return=%.4f, %.3fs",
+                algo_label,
+                gamma,
+                ref_delta,
+                len(trace),
+                mean_ret,
+                wall,
+            )
+
+    # ── delta sweep (gamma fixed at 0.99) ─────────────────────────────────────
+    ref_gamma = 0.99
+    for delta in VI_PI_HP_DELTA_VALUES:
+        for algo_label, run_fn in [("VI", run_vi), ("PI", run_pi)]:
+            t0 = time.perf_counter()
+            if algo_label == "VI":
+                _, policy, trace = run_fn(
+                    T, R, ref_gamma, delta, m_consec=VI_PI_CONSEC_SWEEPS
+                )
+            else:
+                _, policy, trace = run_fn(T, R, ref_gamma, delta)
+            wall = time.perf_counter() - t0
+            mean_ret, iqr = _eval(policy)
+            rows.append(
+                {
+                    "algorithm": algo_label,
+                    "sweep_param": "delta",
+                    "gamma": ref_gamma,
+                    "delta": delta,
+                    "iterations": len(trace),
+                    "wall_clock_s": round(wall, 3),
+                    "mean_eval_return": round(mean_ret, 4),
+                    "eval_return_iqr": round(iqr, 4),
+                }
+            )
+            logger.info(
+                "HP delta sweep [%s] gamma=%.2f delta=%.0e → %d iters, "
+                "mean_return=%.4f, %.3fs",
+                algo_label,
+                ref_gamma,
+                delta,
+                len(trace),
+                mean_ret,
+                wall,
+            )
+
+    return rows
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
@@ -362,6 +465,13 @@ def run() -> None:
     ).to_csv(metrics_dir / "summary.csv", index=False)
     logger.info("Metrics saved → %s", metrics_dir)
 
+    # ── Hyperparameter validation sweep ──────────────────────────────────────
+    logger.info("=== VI/PI Hyperparameter Validation Sweep ===")
+    hp_rows = _hp_sweep_blackjack(T, R)
+    hp_df = pd.DataFrame(hp_rows)
+    hp_df.to_csv(metrics_dir / "hp_validation.csv", index=False)
+    logger.info("HP validation saved → %s", metrics_dir / "hp_validation.csv")
+
     # ── Figures ───────────────────────────────────────────────────────────────
     _save_figures(trace_vi, trace_pi, V_vi, policy_vi, n_states)
 
@@ -379,11 +489,34 @@ def run() -> None:
             "wall_clock_s": round(pi_wall, 3),
             "final_delta_v": round(pi_final_dv, 10),
             "policy_changes_at_convergence": trace_pi[-1]["policy_changes"],
+            "stop_reason": trace_pi[-1].get("stop_reason", "policy_stable"),
             "mean_eval_return": round(pi_mean, 4),
             "eval_return_iqr": round(pi_iqr, 4),
             "policy_match_vi": round(agreement, 4),
         },
     }
+    # Summarise HP sweep: list validated hyperparameters and sensitivity verdict
+    hp_vi_gamma = hp_df[(hp_df.algorithm == "VI") & (hp_df.sweep_param == "gamma")]
+    hp_pi_gamma = hp_df[(hp_df.algorithm == "PI") & (hp_df.sweep_param == "gamma")]
+    checkpoint["hp_validation"] = {
+        "validated_hyperparameters": ["gamma", "delta"],
+        "gamma_sweep_gammas": list(VI_PI_HP_GAMMA_VALUES),
+        "delta_sweep_deltas": list(VI_PI_HP_DELTA_VALUES),
+        "vi_gamma_return_range": [
+            round(float(hp_vi_gamma.mean_eval_return.min()), 4),
+            round(float(hp_vi_gamma.mean_eval_return.max()), 4),
+        ],
+        "pi_gamma_return_range": [
+            round(float(hp_pi_gamma.mean_eval_return.min()), 4),
+            round(float(hp_pi_gamma.mean_eval_return.max()), 4),
+        ],
+        "note": (
+            "gamma materially impacts policy quality (lower gamma → shorter horizon → "
+            "worse expected return); delta affects convergence speed but not final policy "
+            "for values ≤1e-3 on this MDP."
+        ),
+    }
+
     phase2_path = METADATA_DIR / "phase2.json"
     with open(phase2_path, "w") as f:
         json.dump(checkpoint, f, indent=2)

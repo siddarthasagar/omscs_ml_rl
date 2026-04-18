@@ -40,6 +40,8 @@ from src.config import (
     VI_DELTA,
     VI_GAMMA,
     VI_PI_CONSEC_SWEEPS,
+    VI_PI_HP_DELTA_VALUES,
+    VI_PI_HP_GAMMA_VALUES,
 )
 from src.envs.cartpole_discretizer import CartPoleDiscretizer
 from src.envs.cartpole_model import build_cartpole_model
@@ -67,10 +69,14 @@ def _run_grid(grid_name: str) -> dict:
         disc.n_states,
     )
 
+    # Use per-grid rollout budget if specified; fall back to global constant.
+    grid_rollout_steps = cfg.get("rollout_steps", CARTPOLE_MODEL_ROLLOUT_STEPS)
+    logger.info("Grid '%s': using rollout_steps=%d", grid_name, grid_rollout_steps)
+
     # Build T/R model for this grid
     cp_model = build_cartpole_model(
         discretizer=disc,
-        rollout_steps=CARTPOLE_MODEL_ROLLOUT_STEPS,
+        rollout_steps=grid_rollout_steps,
         min_visits=CARTPOLE_MODEL_MIN_VISITS,
         seed=CARTPOLE_MODEL_SEED,
         logger=logger,
@@ -136,6 +142,10 @@ def _run_grid(grid_name: str) -> dict:
         "n_states": disc.n_states,
         "coverage_pct": cp_model["coverage_pct"],
         "smoothed_pct": cp_model["smoothed_pct"],
+        "rollout_steps": grid_rollout_steps,
+        "T": T,
+        "R": R,
+        "disc": disc,
         "vi": {
             "iters": len(trace_vi),
             "wall_clock_s": round(vi_wall, 3),
@@ -267,6 +277,111 @@ def _plot_discretization_study(grid_results: dict, fig_dir) -> None:
     logger.info("Saved → %s", out)
 
 
+HP_EVAL_EPISODES = 50  # lighter budget for the HP sweep
+
+
+def _hp_sweep_cartpole(
+    T: np.ndarray, R: np.ndarray, disc, grid_name: str = "default"
+) -> list[dict]:
+    """Sweep gamma and delta for VI and PI on the given CartPole grid model.
+
+    Gamma sweep: vary gamma, hold delta at reference.
+    Delta sweep: vary delta, hold gamma at 0.99.
+
+    Returns list of row dicts for hp_validation.csv.
+    """
+    rows: list[dict] = []
+
+    def _eval(policy):
+        results = eval_cartpole_policy(
+            policy, disc, seeds=SEEDS, n_episodes=HP_EVAL_EPISODES
+        )
+        lens = [ep_len for _, ep_len in results]
+        return float(np.mean(lens)), float(
+            np.percentile(lens, 75) - np.percentile(lens, 25)
+        )
+
+    # ── gamma sweep ───────────────────────────────────────────────────────────
+    for gamma in VI_PI_HP_GAMMA_VALUES:
+        for algo_label, run_fn, ref_delta in [
+            ("VI", run_vi, VI_DELTA),
+            ("PI", run_pi, PI_DELTA),
+        ]:
+            t0 = time.perf_counter()
+            if algo_label == "VI":
+                _, policy, trace = run_fn(
+                    T, R, gamma, ref_delta, m_consec=VI_PI_CONSEC_SWEEPS, logger=logger
+                )
+            else:
+                _, policy, trace = run_fn(T, R, gamma, ref_delta, logger=logger)
+            wall = time.perf_counter() - t0
+            mean_len, iqr = _eval(policy)
+            rows.append(
+                {
+                    "algorithm": algo_label,
+                    "grid": grid_name,
+                    "sweep_param": "gamma",
+                    "gamma": gamma,
+                    "delta": ref_delta,
+                    "iterations": len(trace),
+                    "wall_clock_s": round(wall, 3),
+                    "mean_episode_len": round(mean_len, 2),
+                    "episode_len_iqr": round(iqr, 2),
+                }
+            )
+            logger.info(
+                "HP gamma sweep [%s/%s] gamma=%.2f delta=%.0e → %d iters, "
+                "mean_len=%.1f, %.3fs",
+                algo_label,
+                grid_name,
+                gamma,
+                ref_delta,
+                len(trace),
+                mean_len,
+                wall,
+            )
+
+    # ── delta sweep ───────────────────────────────────────────────────────────
+    ref_gamma = 0.99
+    for delta in VI_PI_HP_DELTA_VALUES:
+        for algo_label, run_fn in [("VI", run_vi), ("PI", run_pi)]:
+            t0 = time.perf_counter()
+            if algo_label == "VI":
+                _, policy, trace = run_fn(
+                    T, R, ref_gamma, delta, m_consec=VI_PI_CONSEC_SWEEPS, logger=logger
+                )
+            else:
+                _, policy, trace = run_fn(T, R, ref_gamma, delta, logger=logger)
+            wall = time.perf_counter() - t0
+            mean_len, iqr = _eval(policy)
+            rows.append(
+                {
+                    "algorithm": algo_label,
+                    "grid": grid_name,
+                    "sweep_param": "delta",
+                    "gamma": ref_gamma,
+                    "delta": delta,
+                    "iterations": len(trace),
+                    "wall_clock_s": round(wall, 3),
+                    "mean_episode_len": round(mean_len, 2),
+                    "episode_len_iqr": round(iqr, 2),
+                }
+            )
+            logger.info(
+                "HP delta sweep [%s/%s] gamma=%.2f delta=%.0e → %d iters, "
+                "mean_len=%.1f, %.3fs",
+                algo_label,
+                grid_name,
+                delta,
+                ref_gamma,
+                len(trace),
+                mean_len,
+                wall,
+            )
+
+    return rows
+
+
 def _save_figures(grid_results: dict) -> None:
     fig_dir = FIGURES_DIR / PHASE_DIR
     fig_dir.mkdir(parents=True, exist_ok=True)
@@ -348,7 +463,7 @@ def run() -> None:
                     "wall_clock_s": res[alg_key]["wall_clock_s"],
                     "coverage_pct": round(res["coverage_pct"], 4),
                     "smoothed_pct": round(res["smoothed_pct"], 4),
-                    "rollout_steps": CARTPOLE_MODEL_ROLLOUT_STEPS,
+                    "rollout_steps": res["rollout_steps"],
                 }
             )
 
@@ -376,6 +491,16 @@ def run() -> None:
     )
     logger.info("Metrics saved → %s", metrics_dir)
 
+    # ── Hyperparameter validation sweep (default grid only) ───────────────────
+    logger.info("=== VI/PI Hyperparameter Validation Sweep (default grid) ===")
+    default_res = grid_results["default"]
+    hp_rows = _hp_sweep_cartpole(
+        default_res["T"], default_res["R"], default_res["disc"]
+    )
+    hp_df = pd.DataFrame(hp_rows)
+    hp_df.to_csv(metrics_dir / "hp_validation.csv", index=False)
+    logger.info("HP validation saved → %s", metrics_dir / "hp_validation.csv")
+
     # ── Figures ───────────────────────────────────────────────────────────────
     _save_figures(grid_results)
 
@@ -384,6 +509,7 @@ def run() -> None:
         name: {
             "bins": res["bins"],
             "n_states": res["n_states"],
+            "rollout_steps": res["rollout_steps"],
             "coverage_pct": round(res["coverage_pct"], 4),
             "smoothed_pct": round(res["smoothed_pct"], 4),
             "vi": {
@@ -397,11 +523,39 @@ def run() -> None:
                 "wall_clock_s": res["pi"]["wall_clock_s"],
                 "mean_episode_len": round(res["pi"]["mean_episode_len"], 2),
                 "eval_episode_len_iqr": round(res["pi"]["iqr"], 2),
+                "policy_changes_at_convergence": res["pi"]["trace"][-1][
+                    "policy_changes"
+                ],
+                "stop_reason": res["pi"]["trace"][-1].get(
+                    "stop_reason", "policy_stable"
+                ),
             },
             "policy_agreement_pct": round(res["policy_agreement"] * 100, 2),
         }
         for name, res in grid_results.items()
     }
+    hp_vi_gamma = hp_df[(hp_df.algorithm == "VI") & (hp_df.sweep_param == "gamma")]
+    hp_pi_gamma = hp_df[(hp_df.algorithm == "PI") & (hp_df.sweep_param == "gamma")]
+    checkpoint["hp_validation"] = {
+        "grid": "default",
+        "validated_hyperparameters": ["gamma", "delta"],
+        "gamma_sweep_gammas": list(VI_PI_HP_GAMMA_VALUES),
+        "delta_sweep_deltas": list(VI_PI_HP_DELTA_VALUES),
+        "vi_gamma_episode_len_range": [
+            round(float(hp_vi_gamma.mean_episode_len.min()), 2),
+            round(float(hp_vi_gamma.mean_episode_len.max()), 2),
+        ],
+        "pi_gamma_episode_len_range": [
+            round(float(hp_pi_gamma.mean_episode_len.min()), 2),
+            round(float(hp_pi_gamma.mean_episode_len.max()), 2),
+        ],
+        "note": (
+            "gamma materially impacts policy quality on CartPole (lower gamma → "
+            "myopic policy → shorter episodes); delta affects convergence speed "
+            "but not final policy quality for values ≤1e-3."
+        ),
+    }
+
     phase3_path = METADATA_DIR / "phase3.json"
     with open(phase3_path, "w") as f:
         json.dump(checkpoint, f, indent=2)
