@@ -5,7 +5,14 @@ This document reviews the current implementation state of Phases 1 through 3 aga
 - `documents/canvas/assignment/md/RL_Report_Spring_2026_v1-2.md`
 - `documents/canvas/assignment/md/RL_Report_Spring_2026_FAQ_v2.md`
 
-This version reflects the **updated rerun artifacts** currently present under `artifacts/`. Relative to the earlier review, the implementation has clearly improved: CartPole rollout budgets are larger, DP hyperparameter validation is now persisted as CSV artifacts, and PI stop reasons are now made explicit in logs and checkpoint JSONs. The main remaining issues are **CartPole model sparsity**, **incomplete PI policy stabilization on Phase 3 default/fine grids**, and **a new consistency gap between the main reported results and the saved hyperparameter-sweep rows**.
+This version reflects the current artifacts under `artifacts/` and corrects a few stale claims from the previous review. Relative to the earlier state, the implementation has clearly improved: CartPole rollout budgets are larger, DP hyperparameter validation is now persisted as CSV artifacts, and PI stop reasons are now made explicit in logs and checkpoint JSONs.
+
+The main remaining issues are:
+
+- **CartPole model sparsity**, especially on the default and fine grids
+- **VI/PI divergence on the Phase 3 default and fine grids**, even after PI now reaches full policy stabilization
+- **Phase 3 hyperparameter-validation narrative is stale relative to the latest rerun**, especially for VI sensitivity to `delta`
+- **under-documented differences between main evaluation outputs and hyperparameter-sweep outputs**, which are explainable from the code but not yet clearly stated in the artifact narrative
 
 ## What is already working well
 
@@ -21,7 +28,7 @@ This version reflects the **updated rerun artifacts** currently present under `a
   - default-grid rollout budget increased to `2000000`
   - persisted coverage improved to `25.17%`
   - smoothed fraction decreased to `57.12%`
-- Phase 1 still generates the expected persisted artifacts:
+- Phase 1 generates the expected persisted artifacts:
   - `artifacts/metadata/cartpole_model.npz`
   - `artifacts/figures/phase1/bin_edges.png`
   - `artifacts/figures/phase1/coverage_heatmap.png`
@@ -36,11 +43,12 @@ This version reflects the **updated rerun artifacts** currently present under `a
   - `summary.csv`
   - `hp_validation.csv`
   - the expected convergence and heatmap figures
-- Main reported results are still strong:
+- Main reported results are strong and internally coherent:
   - VI converges in `9` iterations
   - PI converges in `3` iterations
   - both main runs evaluate to `-0.0288`
-  - main saved policy agreement is `1.0`
+  - saved policy agreement is `1.0`
+  - PI stops with `policy_changes_at_convergence = 0` and `stop_reason = "policy_stable"`
 - The DP hyperparameter-validation requirement is now being addressed explicitly:
   - `phase2.json` records validated hyperparameters `["gamma", "delta"]`
   - `artifacts/metrics/phase2_vi_pi_blackjack/hp_validation.csv` persists the sweep rows
@@ -55,18 +63,23 @@ This version reflects the **updated rerun artifacts** currently present under `a
   - `discretization_study.csv`
   - `hp_validation.csv`
   - the expected convergence and discretization-study figures
-- The rerun materially improved the CartPole DP results:
-  - default-grid performance increased to about `456.8` / `466.2`
-  - fine-grid performance increased to about `438.1`
-  - fine-grid coverage increased from the earlier run to `16.3%`
-- The artifacts now make PI stopping behavior explicit:
-  - coarse: `stop_reason = "policy_stable"`
-  - default: `stop_reason = "value_threshold"`
-  - fine: `stop_reason = "value_threshold"`
+- The latest rerun materially changes the CartPole DP comparison:
+  - coarse grid remains `500.00 / 500.00` mean episode length for VI / PI
+  - default grid is now `456.79 / 465.47`
+  - fine grid is now `434.88 / 436.71`
+  - fine-grid coverage remains `16.30%`
+- The PI stabilization issue is now resolved in the saved artifacts:
+  - coarse: `stop_reason = "policy_stable"`, `policy_changes_at_convergence = 0`
+  - default: `stop_reason = "policy_stable"`, `policy_changes_at_convergence = 0`
+  - fine: `stop_reason = "policy_stable"`, `policy_changes_at_convergence = 0`
+- VI and PI still agree strongly on the non-coarse grids, but they no longer match exactly:
+  - default agreement: `98.38%`
+  - fine agreement: `98.95%`
+  - `policy_agreement.csv` records `exact_match = False` for both default and fine
 
-That means the pipeline is not just functioning mechanically; it is iterating in the right direction. The review points below focus on what still limits the report-quality interpretation of the saved results.
+That means the pipeline is not just functioning mechanically; it is producing sensible, reviewable artifacts. The remaining issues are about how strong the report claims can be, not whether Phases 1 through 3 are fundamentally broken.
 
-## Review Point 1 — CartPole model coverage improved, but it is still too sparse for a clean discretization conclusion
+## Review Point 1 - CartPole model coverage is still too sparse for a clean discretization conclusion
 
 ### Assignment basis
 
@@ -96,21 +109,21 @@ and:
 
 > `CartPole coverage 25.2% is below the 80% target`
 
-Phase 3 now reports:
+Phase 3 currently reports:
 
-| Grid | States | Rollout steps | Coverage | Smoothed | Mean episode length |
+| Grid | States | Rollout steps | Coverage | Smoothed | Mean episode length (VI / PI) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | coarse | 72 | 500000 | 89.58% | 6.25% | 500.00 / 500.00 |
-| default | 864 | 2000000 | 25.17% | 57.12% | 456.79 / 466.23 |
-| fine | 4000 | 5000000 | 16.30% | 75.32% | 438.10 / 437.93 |
+| default | 864 | 2000000 | 25.17% | 57.12% | 456.79 / 465.47 |
+| fine | 4000 | 5000000 | 16.30% | 75.32% | 434.88 / 436.71 |
 
 from `artifacts/metadata/phase3.json` and `discretization_study.csv`.
 
 ### Review
 
-This point is **better than before**, but it is still the main limitation of the CartPole DP story.
+This point is still one of the main limitations of the CartPole DP story.
 
-The rerun clearly helped: default-grid coverage increased and both default/fine policies improved substantially. That is strong evidence that the earlier result really was being held back by model quality. But the absolute coverage levels are still low enough that the default and fine grids remain heavily confounded by sparsity:
+The rerun clearly helped at the policy-performance level: all saved PI runs are now policy-stable, and the current VI results no longer show the earlier extraction-driven instability. But the absolute coverage levels are still low enough that the default and fine grids remain heavily confounded by sparsity:
 
 - default still relies on smoothing for more than half the state-action space
 - fine still relies on smoothing for roughly three quarters of the state-action space
@@ -123,9 +136,11 @@ So the current writeup can make a **qualified** discretization claim, but not ye
 
 ### Recommendation
 
-The report should now explicitly frame the CartPole result as a **joint discretization-and-model-coverage trade-off**, not only a discretization trade-off. If there is time for another iteration, the highest-value improvement remains better CartPole model quality.
+The report should explicitly frame the CartPole result as a **joint discretization-and-model-coverage trade-off**, not only a discretization trade-off.
 
-## Review Point 2 — Phase 3 PI reporting is more honest now, but default/fine still do not fully stabilize
+If there is time for another iteration, the highest-value improvement remains better CartPole model quality. If there is not time for another rerun, this issue becomes a reporting caveat rather than a blocker.
+
+## Review Point 2 - Phase 3 PI stabilization is fixed, but VI and PI now separate materially on both non-coarse grids
 
 ### Assignment basis
 
@@ -136,45 +151,64 @@ From `RL_Report_Spring_2026_v1-2.md`:
 > - Which algorithm converged faster? Why?
 > - Did they produce the same optimal policy?
 
-To answer those questions rigorously, it helps if the saved PI runs end with policy stabilization rather than only a very small value-function delta.
+To answer those questions rigorously, it helps if both methods are genuinely comparable at convergence and if any remaining disagreement is interpreted correctly.
 
 ### Artifact evidence
 
 The final rows of `artifacts/metrics/phase3_vi_pi_cartpole/pi_convergence.csv` now show:
 
 - coarse: `policy_changes = 0`, `stop_reason = policy_stable`
-- default: `policy_changes = 5`, `stop_reason = value_threshold`
-- fine: `policy_changes = 19`, `stop_reason = value_threshold`
+- default: `policy_changes = 0`, `stop_reason = policy_stable`
+- fine: `policy_changes = 0`, `stop_reason = policy_stable`
 
-The Phase 3 log now explicitly warns on the non-coarse grids:
+That resolves the earlier PI-stopping caveat.
 
-> `stopping on value threshold ... but policy_changes=5 — full policy convergence not reached`
+However, `artifacts/metrics/phase3_vi_pi_cartpole/policy_agreement.csv` now reports:
 
-and:
+- coarse: `100.0%`, `exact_match = True`
+- default: `98.38%`, `exact_match = False`
+- fine: `98.95%`, `exact_match = False`
 
-> `stopping on value threshold ... but policy_changes=19 — full policy convergence not reached`
+And `artifacts/metrics/phase3_vi_pi_cartpole/policy_eval_aggregate.csv` reports:
+
+- default: VI `456.794`, PI `465.468`
+- fine: VI `434.880`, PI `436.712`
+
+At the per-seed level:
+
+- PI outperforms VI on all five default-grid seeds in `policy_eval_per_seed.csv`
+- PI slightly outperforms VI on three of five fine-grid seeds, and the aggregate mean also favors PI
 
 ### Review
 
-This is a meaningful improvement over the earlier run because the artifact layer is now honest about what happened. The earlier issue was partly that the output looked like PI had simply converged. The new run fixes that by persisting `stop_reason` and warning in the logs.
+This is a real improvement over the earlier run because the PI non-convergence issue is gone. The saved PI results are now easier to defend.
 
-But the underlying behavior is still unresolved for the default and fine grids. Those PI runs remain usable as approximate comparison points, yet they should not be described as fully policy-stable convergence results.
+But fixing that issue exposed a different interpretive problem: on the non-coarse grids, VI and PI are no longer effectively interchangeable under the saved evaluation.
 
 That matters for two reasons:
 
-1. it weakens the strongest version of any claim that VI and PI reached the same optimal policy on those grids
-2. it makes the PI wall-clock and iteration counts slightly ambiguous, because they are counts to a value threshold rather than to stable policy convergence
+1. the report should no longer imply that VI and PI reached the same policy on the non-coarse grids
+2. under the current saved evaluation, PI is better on the default grid and slightly better on the fine grid
+
+This does not necessarily mean the implementation is broken. Possible explanations include:
+
+- non-unique near-optimal policies under the discretized empirical model
+- a VI stopping threshold or policy-extraction detail that is slightly less favorable than PI on this model
+- evaluation sensitivity under sparse model regions
+
+But whatever the explanation, the saved results should now be written as substantive differences, not as near-identity.
 
 ### Recommendation
 
-If another code iteration is possible, PI should either:
+If another code iteration is possible, the next high-value investigation is no longer PI stopping. It is understanding why VI and stable PI disagree on the default and fine grids.
 
-- continue until policy stabilization, or
-- report two stopping notions separately: value-threshold reached vs. policy-stable reached
+Specifically:
 
-If no further implementation change is made, the report should explicitly state that default/fine PI stopped on a value threshold before full policy stabilization.
+- verify whether VI policy extraction and stopping criteria are as intended
+- confirm whether the differences persist under a larger evaluation budget
+- if no implementation change is made, report the current result honestly: `PI > VI` on the default grid and a smaller `PI > VI` gap on the fine grid under the saved setup, rather than claiming equivalence
 
-## Review Point 3 — DP hyperparameter validation is now present, but the saved sweep outputs do not fully agree with the main reported results
+## Review Point 3 - DP hyperparameter validation is present, but the saved Phase 3 narrative is stale relative to the latest rerun
 
 ### Assignment basis
 
@@ -184,7 +218,7 @@ From `RL_Report_Spring_2026_FAQ_v2.md`:
 
 The FAQ also says:
 
-> Explicitly list the **at least 2 validated hyperparameters** per model and summarize sensitivity (what mattered vs. noise).
+> Explicitly list the **at least 2 validated hyperparameters** per model and summarize sensitivity (what mattered vs noise).
 
 and:
 
@@ -202,7 +236,7 @@ This requirement is now substantially addressed:
 - `artifacts/metrics/phase2_vi_pi_blackjack/hp_validation.csv` exists
 - `artifacts/metrics/phase3_vi_pi_cartpole/hp_validation.csv` exists
 
-However, the selected sweep rows do not fully match the main reported results.
+The selected sweep rows do not numerically match the main reported results.
 
 For Phase 2:
 
@@ -211,50 +245,131 @@ For Phase 2:
 
 For Phase 3 default grid:
 
-- main aggregate reports `456.794` / `466.230`
-- `hp_validation.csv` at `gamma=0.99, delta=1e-6` reports `454.79` / `465.98`
+- main aggregate reports `456.794` / `465.468`
+- `hp_validation.csv` at `gamma=0.99, delta=1e-6` reports `454.79` / `464.64`
 
-The Phase 3 gap is small; the Phase 2 gap is material.
+But the more important new detail is inside `artifacts/metrics/phase3_vi_pi_cartpole/hp_validation.csv` itself.
+
+For VI on the default grid:
+
+- gamma sweep: `454.83`, `454.79`, `454.69`, `454.87`
+- delta sweep: `457.91`, `457.90`, `457.90`, `454.87`
+
+For PI on the default grid:
+
+- gamma sweep: `463.68`, `463.68`, `463.68`, `464.64`
+- delta sweep: `464.64` across all tested deltas
+
+However, the code explains most of this gap:
+
+- Phase 2 main evaluation uses `1000` episodes per seed, while the HP sweep uses `500`
+- Phase 3 main evaluation uses `100` episodes per seed, while the HP sweep uses `50`
+
+So these outputs are not necessarily contradictory. They are generated under different evaluation budgets.
 
 ### Review
 
-This means the repository is now in a better place with respect to the FAQ requirement, but the validation story is not fully self-consistent yet.
+This means the repository is in a better place with respect to the FAQ requirement than the previous review implied.
 
-The problem is no longer "there is no DP hyperparameter validation." The problem is now "the saved validation artifacts do not appear to be exactly the same experiment path as the main reported configuration, or the difference is not documented." That weakens the justification of the final selected settings.
+The problem is no longer `there is no DP hyperparameter validation`, and it is not automatically `the artifacts are inconsistent`. The more precise issue is:
 
-Possible explanations include:
+- the repository now validates DP hyperparameters
+- the sweep outputs are directionally useful
+- but the artifact and report narrative do not yet explain that the sweep helper intentionally uses lighter evaluation budgets than the final main-report runs
+- and, on Phase 3, the saved metadata note still does not match the current sweep rows
 
-- different evaluation episode counts
-- different seed handling
-- slightly different execution paths between the main run and the sweep helper
-- one artifact being stale relative to another
+That is chiefly a documentation and interpretation issue, not clear evidence of a broken experiment path. On Phase 3, the selected-row gap is still small enough to look consistent with the lighter sweep budget. The current VI sweep no longer shows catastrophic collapse, but it does still show that `delta` changes final performance modestly, so the saved note claiming that `delta` only changes convergence speed for values `<= 1e-3` remains inaccurate.
 
 ### Recommendation
 
-Before treating the DP phases as fully report-ready, reconcile the main selected configuration with the sweep row at that same configuration. The cleanest end state is:
+Before sign-off, document this explicitly in the report and, ideally, in the metadata narrative:
 
-- the selected row in `hp_validation.csv` exactly matches the corresponding main reported result, or
-- the report and metadata explicitly explain why the sweep numbers are intentionally different
+- the sweep outputs were generated with lighter evaluation budgets to keep validation cheap
+- the selected sweep rows should be compared directionally, not expected to match the final main-report values exactly
+- for CartPole VI on the default grid, `gamma` is now fairly flat in the saved sweep, while `delta` still changes final policy quality modestly
+
+If you want the cleanest possible story, rerun the selected final HP row under the full main evaluation budget and note that it agrees with the main result. But that is a strengthening step, not the only acceptable resolution.
 
 ## Overall conclusion
 
-The updated artifacts show **clear progress**:
+The updated artifacts show clear progress:
 
 - CartPole model quality is better than in the earlier run
-- Phase 3 performance improved meaningfully
+- Phase 3 performance improved materially
 - DP hyperparameter validation is now persisted
-- PI stopping semantics are now transparent
+- PI now reaches full policy stabilization on all three saved grids
 
-So the rerun successfully addressed two major weaknesses from the earlier review.
+So the rerun successfully removed one major weakness from the earlier review. The remaining gaps are narrower and better understood, but the non-coarse-grid VI/PI discrepancies and the stale Phase 3 HP-validation note are now the main comparison issues.
 
-### Final assessment
+## Visualization recommendations for the report
 
-- **Phase 1:** improved, but CartPole model quality is still below the intended target
-- **Phase 2:** stronger than before, but the main-result vs validation-sweep mismatch should be reconciled
-- **Phase 3:** much better and now honestly instrumented, but still not fully clean as a discretization study because of low coverage and non-policy-stable PI on default/fine grids
+These are not experimental blockers, but they matter for how convincingly the report communicates the results under a tight page budget.
 
-### Recommended next actions
+### Blackjack
 
-1. Reconcile the main reported DP results with the selected hyperparameter-sweep rows.
-2. Decide whether to invest in one more CartPole model-quality improvement pass.
-3. If no more reruns are planned, write the report using the current caveats explicitly: sparse model coverage and PI value-threshold stopping on default/fine grids.
+- A research check changes the earlier recommendation here: **3D Blackjack value surfaces are legitimate and canonical in Sutton-and-Barto-style presentations**, so they are not a gimmick.
+- However, that does **not** automatically make them the best figure for this report. In a short paper, 3D plots cost space and are weaker for exact comparison than a clean 2D view.
+- The current value heatmap is therefore acceptable to keep if report space is tight.
+- If you want one explicitly textbook-style Blackjack figure, the best use of 3D is still:
+  - X-axis = dealer card
+  - Y-axis = player sum
+  - Z-axis = value `V(s)`
+  - one panel for no usable ace
+  - one panel for usable ace
+- The **highest-value Blackjack visual** is still a crisp 2D policy decision-region plot:
+  - solid discrete colors for hit vs stick
+  - no smoothing or interpolation
+  - sharp separation between action regions
+  - one panel for usable ace and one for no usable ace
+
+### CartPole
+
+- The current CartPole convergence and discretization figures should remain the **core figures** because they directly support the assignment questions.
+- For **VI vs PI comparison**, same-figure plots are usually better than fully independent figures **when the metric is genuinely comparable on the same axis**.
+- The current discretization-study figure already follows the right pattern: VI and PI are plotted together for policy quality and planning time, so the reader can compare them directly without mentally aligning separate plots.
+- Raw VI and PI convergence should **not** be forced onto one overlaid line chart just because both use iteration on the x-axis.
+- In this project, a VI iteration and a PI iteration are not the same unit of work, and the PI trace also carries policy-change events. A single overlay would therefore make the comparison look cleaner than it really is.
+- If the convergence presentation is revised, the better format is a **shared comparison figure with aligned subplots** or side-by-side panels using matched scales, not one merged overlay.
+- If one additional policy-visualization figure is added, the highest-value option is a **sliced decision-boundary plot** in `(theta, thetadot)` space while fixing `x = 0` and `xdot = 0`.
+- That kind of plot is more useful for this report than a raw rollout trajectory because it shows what the learned controller chooses across a slice of state space, not just one realized episode.
+- Phase-space trajectory plots can still be useful as supplementary figures, but they should not replace the discretization-study figure or the convergence figures.
+
+### Recommendation
+
+If report space is tight, the highest-value visualization upgrades are:
+
+1. Keep the existing CartPole discretization figure as the main VI-vs-PI comparison figure.
+2. Make the Blackjack policy plots look like crisp decision-region maps.
+3. If you rework CartPole convergence presentation, prefer a shared figure with aligned VI and PI subplots rather than two totally separate figures or one overlaid graph.
+4. Add Blackjack 3D value-function surfaces only if you want an explicit Sutton-and-Barto-style figure and still have room.
+5. Add optional CartPole `(theta, thetadot)` sliced policy maps if room remains.
+
+I would not prioritize CartPole rollout trajectories over the current convergence and discretization figures.
+
+## Final assessment
+
+- **Phase 1:** functionally done, with the standing CartPole coverage caveat
+- **Phase 2:** functionally done; the main remaining task is documenting why HP-sweep numbers and main-report numbers differ
+- **Phase 3:** materially stronger than before because PI now fully stabilizes and VI extraction is cleaner, but still not ready for an unqualified claim because of low model coverage, remaining VI/PI disagreement, and a stale HP-validation narrative
+
+## Sign-off status
+
+**Recommended status: conditional sign-off for Phases 1 through 3, still not unconditional sign-off.**
+
+I would treat these phases as done once the reporting caveats below are carried into the report or final review notes. I would only hold back sign-off if you want to claim a stronger CartPole discretization result than the current artifacts support, if you want to claim that VI and PI produced the same policy on the non-coarse grids, or if you want to leave the current Phase 3 HP-validation note uncorrected.
+
+## Next steps required before sign-off
+
+1. Update the report text to describe CartPole as a **discretization plus model-coverage trade-off**, not as a pure discretization study.
+2. State explicitly that Phase 3 PI now reaches policy-stable convergence on all saved grids, but VI and PI do **not** produce identical policies on the default and fine grids.
+3. Report the current non-coarse-grid comparison honestly: `PI > VI` on the default grid, and a smaller `PI > VI` gap on the fine grid, under the saved evaluation.
+4. Update the Phase 3 hyperparameter-validation narrative to reflect the current CSV rows: the earlier severe VI brittleness is no longer present, but `delta` still changes final VI performance modestly and the current metadata note should be corrected.
+5. Document that the DP hyperparameter sweeps used smaller evaluation budgets than the final main runs, so `hp_validation.csv` should be interpreted directionally rather than as an exact numeric duplicate of the final report row.
+
+## Optional strengthening steps
+
+1. Increase CartPole rollout budgets again and rerun Phase 1 plus Phase 3 if you want a cleaner discretization conclusion.
+2. Investigate why VI and stable PI disagree on the default and fine grids, especially whether the VI stopping criterion or policy extraction should be tightened.
+3. Rerun the selected DP hyperparameter row at the full main evaluation budget and persist that comparison if you want a perfectly apples-to-apples validation story.
+
+If those optional strengthening steps are skipped, the phases can still be signed off as complete for the DP portion of the project, provided the report keeps the current caveats explicit.

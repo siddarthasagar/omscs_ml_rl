@@ -31,6 +31,8 @@ from src.config import (
     CARTPOLE_MODEL_MIN_VISITS,
     CARTPOLE_MODEL_ROLLOUT_STEPS,
     CARTPOLE_MODEL_SEED,
+    CP_EVAL_EPISODES_HP,
+    CP_EVAL_EPISODES_MAIN,
     FIGURES_DIR,
     METADATA_DIR,
     METRICS_DIR,
@@ -49,7 +51,7 @@ from src.utils.logger import configure_logger
 
 logger = configure_logger("phase3")
 
-N_EVAL_EPISODES = 100
+N_EVAL_EPISODES = CP_EVAL_EPISODES_MAIN
 PHASE_DIR = "phase3_vi_pi_cartpole"
 GRID_NAMES = ["coarse", "default", "fine"]
 GRID_COLORS = {"coarse": "#DD8452", "default": "#4C72B0", "fine": "#55A868"}
@@ -381,7 +383,7 @@ def _plot_policy_slice(grid_results: dict, fig_dir) -> None:
     logger.info("Saved → %s", out)
 
 
-HP_EVAL_EPISODES = 50  # lighter budget for the HP sweep
+HP_EVAL_EPISODES = CP_EVAL_EPISODES_HP
 
 
 def _hp_sweep_cartpole(
