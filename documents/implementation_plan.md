@@ -4,6 +4,17 @@
 
 Two MDPs × four algorithms = eight experiment cells, plus a CartPole discretization study and optional Rainbow DQN extra credit. Everything runs through the phase-gate pipeline: each phase saves a `phase{N}.json` checkpoint for human review before the next phase begins.
 
+## Go-Forward Phase Design Contract
+
+All phases implemented or refactored from this point forward follow the artifact-first lifecycle defined in the steering docs:
+
+- `run()` writes all required artifacts for the phase
+- `visualize(checkpoint_path)` reloads only those artifacts from disk and renders figures
+- downstream phases consume only declared upstream artifact inputs
+- a phase may have zero upstream phase dependencies if it is logically self-contained
+
+This is the target design for the Phase 1–3 refactor and the expected template for Phases 4+.
+
 ---
 
 ## Hypothesis (state before experiments begin)
@@ -108,6 +119,8 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 
 **Goal:** Establish convergence behaviour on the exact discrete stochastic model.
 
+**Input contract:** none from prior phases. Phase 2 is self-contained because Blackjack planning uses the exact analytic T/R model rather than a fitted upstream artifact.
+
 **Seed usage:** One deterministic planning run per algorithm. Policy quality evaluated over 5 independent seeds (env rollouts of greedy policy).
 
 **Tasks:**
@@ -138,6 +151,8 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 ### Phase 3 — Model-Based: VI & PI on CartPole
 
 **Goal:** Assess how discretization coarseness interacts with DP convergence; disentangle binning quality from model quality.
+
+**Input contract:** declared artifact inputs from Phase 1 for the default CartPole discretizer/model context; any additional grid-specific model artifacts produced inside Phase 3 are treated as Phase 3 outputs, not shared runtime state.
 
 **Seed usage:** One planning run per algorithm per grid. Policy quality evaluated over 5 seeds × 100 episodes each.
 

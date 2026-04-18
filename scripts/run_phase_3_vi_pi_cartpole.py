@@ -1,17 +1,20 @@
 """Phase 3 — Model-Based: VI & PI on CartPole (discretization ablation study).
 
-Builds T/R models for coarse/default/fine grids, runs VI and PI on each, and
-evaluates the resulting policies.  Outputs per-grid convergence curves,
-a discretization study figure, and all metric CSVs.
+Lifecycle:
+    run()               → build models, run algorithms, write all artifacts, return checkpoint path
+    visualize(path)     → reload from disk only, render all figures
 
 Outputs:
   artifacts/metrics/phase3_vi_pi_cartpole/
     vi_convergence.csv, pi_convergence.csv
     policy_eval_per_seed.csv, policy_eval_aggregate.csv
     policy_agreement.csv, discretization_study.csv
+    hp_validation.csv
+    plot_cp_grids.npz          ← plot-support: per-grid policy arrays
   artifacts/figures/phase3_vi_pi_cartpole/
     cartpole_vi_convergence.png, cartpole_pi_convergence.png
     cartpole_discretization_study.png
+    cartpole_policy_slice.png
   artifacts/metadata/phase3.json
   artifacts/logs/phase3.log
 
@@ -19,8 +22,8 @@ Usage:
   uv run python scripts/run_phase_3_vi_pi_cartpole.py
 """
 
-import json
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -33,9 +36,6 @@ from src.config import (
     CARTPOLE_MODEL_SEED,
     CP_EVAL_EPISODES_HP,
     CP_EVAL_EPISODES_MAIN,
-    FIGURES_DIR,
-    METADATA_DIR,
-    METRICS_DIR,
     PI_DELTA,
     PI_GAMMA,
     SEEDS,
@@ -48,13 +48,24 @@ from src.config import (
 from src.envs.cartpole_discretizer import CartPoleDiscretizer
 from src.envs.cartpole_model import build_cartpole_model
 from src.utils.logger import configure_logger
+from src.utils.phase_artifacts import (
+    SCHEMA_VERSION,
+    resolve_phase_paths,
+    load_checkpoint_json,
+    validate_required_outputs,
+    write_checkpoint_json,
+)
+from src.utils.plotting import (
+    CP_GRID_NAMES,
+    plot_cp_convergence,
+    plot_cp_discretization_study,
+    plot_cp_policy_slice,
+)
 
 logger = configure_logger("phase3")
 
-N_EVAL_EPISODES = CP_EVAL_EPISODES_MAIN
-PHASE_DIR = "phase3_vi_pi_cartpole"
-GRID_NAMES = ["coarse", "default", "fine"]
-GRID_COLORS = {"coarse": "#DD8452", "default": "#4C72B0", "fine": "#55A868"}
+_PHASE_ID = "phase3"
+_SLUG = "vi_pi_cartpole"
 
 
 # ── Per-grid runner ───────────────────────────────────────────────────────────
@@ -71,11 +82,9 @@ def _run_grid(grid_name: str) -> dict:
         disc.n_states,
     )
 
-    # Use per-grid rollout budget if specified; fall back to global constant.
     grid_rollout_steps = cfg.get("rollout_steps", CARTPOLE_MODEL_ROLLOUT_STEPS)
     logger.info("Grid '%s': using rollout_steps=%d", grid_name, grid_rollout_steps)
 
-    # Build T/R model for this grid
     cp_model = build_cartpole_model(
         discretizer=disc,
         rollout_steps=grid_rollout_steps,
@@ -85,7 +94,6 @@ def _run_grid(grid_name: str) -> dict:
     )
     T, R = cp_model["T"], cp_model["R"]
 
-    # VI
     logger.info("Running VI on grid '%s'...", grid_name)
     t0 = time.perf_counter()
     V_vi, policy_vi, trace_vi = run_vi(
@@ -94,38 +102,34 @@ def _run_grid(grid_name: str) -> dict:
     vi_wall = time.perf_counter() - t0
     logger.info("VI: %d iters, %.3fs", len(trace_vi), vi_wall)
 
-    # PI
     logger.info("Running PI on grid '%s'...", grid_name)
     t0 = time.perf_counter()
-    V_pi, policy_pi, trace_pi = run_pi(
+    _, policy_pi, trace_pi = run_pi(
         T, R, PI_GAMMA, PI_DELTA, m_consec=VI_PI_CONSEC_SWEEPS, logger=logger
     )
     pi_wall = time.perf_counter() - t0
     logger.info("PI: %d iters, %.3fs", len(trace_pi), pi_wall)
 
-    # Policy agreement (non-absorbing states only)
     n = disc.n_states
     agreement = float((policy_vi[:n] == policy_pi[:n]).mean())
     logger.info("Grid '%s' VI vs PI agreement: %.1f%%", grid_name, agreement * 100)
 
-    # Evaluate VI policy
     logger.info(
         "Evaluating VI on '%s' (%d seeds × %d eps)...",
         grid_name,
         len(SEEDS),
-        N_EVAL_EPISODES,
+        CP_EVAL_EPISODES_MAIN,
     )
     vi_eval = eval_cartpole_policy(
-        policy_vi, disc, seeds=SEEDS, n_episodes=N_EVAL_EPISODES
+        policy_vi, disc, seeds=SEEDS, n_episodes=CP_EVAL_EPISODES_MAIN
     )
     vi_lens = [ep_len for _, ep_len in vi_eval]
     vi_mean = float(np.mean(vi_lens))
     vi_iqr = float(np.percentile(vi_lens, 75) - np.percentile(vi_lens, 25))
 
-    # Evaluate PI policy
     logger.info("Evaluating PI on '%s'...", grid_name)
     pi_eval = eval_cartpole_policy(
-        policy_pi, disc, seeds=SEEDS, n_episodes=N_EVAL_EPISODES
+        policy_pi, disc, seeds=SEEDS, n_episodes=CP_EVAL_EPISODES_MAIN
     )
     pi_lens = [ep_len for _, ep_len in pi_eval]
     pi_mean = float(np.mean(pi_lens))
@@ -145,6 +149,7 @@ def _run_grid(grid_name: str) -> dict:
         "coverage_pct": cp_model["coverage_pct"],
         "smoothed_pct": cp_model["smoothed_pct"],
         "rollout_steps": grid_rollout_steps,
+        # T and R kept for HP sweep — not persisted beyond run()
         "T": T,
         "R": R,
         "disc": disc,
@@ -170,244 +175,27 @@ def _run_grid(grid_name: str) -> dict:
     }
 
 
-# ── Figure helpers ────────────────────────────────────────────────────────────
-
-
-def _plot_convergence_curves(
-    grid_results: dict, algo_key: str, fig_dir, filename: str, title: str
-) -> None:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    for name in GRID_NAMES:
-        res = grid_results[name]
-        trace = res[algo_key]["trace"]
-        iters = [t["iteration"] for t in trace]
-        dvs = [t["delta_v"] for t in trace]
-        ax.semilogy(
-            iters,
-            dvs,
-            label=f"{name} ({res['n_states']} states)",
-            color=GRID_COLORS[name],
-            linewidth=1.5,
-        )
-
-    delta = VI_DELTA if algo_key == "vi" else PI_DELTA
-    ax.axhline(
-        delta, color="red", linewidth=1, linestyle="--", label=f"δ = {delta:.0e}"
-    )
-    ax.set_xlabel("Iteration")
-    ax.set_ylabel("max ΔV (log scale)")
-    ax.set_title(title)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    out = fig_dir / filename
-    fig.savefig(out, dpi=130, bbox_inches="tight")
-    plt.close(fig)
-    logger.info("Saved → %s", out)
-
-
-def _plot_discretization_study(grid_results: dict, fig_dir) -> None:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    x = list(range(len(GRID_NAMES)))
-    fig, axes = plt.subplots(1, 3, figsize=(13, 4))
-
-    # Panel 1: mean episode length (policy quality)
-    for algo, alg_key in [("VI", "vi"), ("PI", "pi")]:
-        means = [grid_results[g][alg_key]["mean_episode_len"] for g in GRID_NAMES]
-        iqrs = [grid_results[g][alg_key]["iqr"] for g in GRID_NAMES]
-        axes[0].errorbar(
-            x, means, yerr=iqrs, label=algo, marker="o", capsize=4, linewidth=1.5
-        )
-    axes[0].set_xticks(x)
-    axes[0].set_xticklabels(GRID_NAMES)
-    axes[0].set_xlabel("Grid")
-    axes[0].set_ylabel("Mean episode length")
-    axes[0].set_title("Policy quality vs grid")
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-
-    # Panel 2: planning wall-clock time (model build included for CartPole?)
-    for algo, alg_key in [("VI", "vi"), ("PI", "pi")]:
-        walls = [grid_results[g][alg_key]["wall_clock_s"] for g in GRID_NAMES]
-        axes[1].plot(x, walls, label=algo, marker="o", linewidth=1.5)
-    axes[1].set_xticks(x)
-    axes[1].set_xticklabels(GRID_NAMES)
-    axes[1].set_xlabel("Grid")
-    axes[1].set_ylabel("Planning wall-clock (s)")
-    axes[1].set_title("Planning time vs grid")
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
-
-    # Panel 3: model coverage %
-    coverages = [grid_results[g]["coverage_pct"] * 100 for g in GRID_NAMES]
-    bars = axes[2].bar(
-        x,
-        coverages,
-        color=[GRID_COLORS[g] for g in GRID_NAMES],
-        alpha=0.85,
-        edgecolor="white",
-    )
-    for bar, val in zip(bars, coverages):
-        axes[2].text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 0.5,
-            f"{val:.1f}%",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-        )
-    axes[2].set_xticks(x)
-    axes[2].set_xticklabels(GRID_NAMES)
-    axes[2].set_xlabel("Grid")
-    axes[2].set_ylabel("Coverage (%)")
-    axes[2].set_title("Model coverage vs grid")
-    axes[2].set_ylim(0, 110)
-    axes[2].grid(True, alpha=0.3, axis="y")
-
-    fig.suptitle("CartPole Discretization Study", fontsize=11, fontweight="bold")
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    out = fig_dir / "cartpole_discretization_study.png"
-    fig.savefig(out, dpi=130, bbox_inches="tight")
-    plt.close(fig)
-    logger.info("Saved → %s", out)
-
-
-def _plot_policy_slice(grid_results: dict, fig_dir) -> None:
-    """Decision-boundary slice in (theta, thetadot) space at x=0, xdot=0.
-
-    One column per grid (coarse/default/fine), two rows (VI / PI).
-    Action 0 = push left (blue), Action 1 = push right (orange).
-    """
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.colors as mcolors
-    import matplotlib.patches as mpatches
-    import matplotlib.pyplot as plt
-
-    ACTION_COLORS = ["#4C72B0", "#DD8452"]  # 0=left, 1=right
-    cmap = mcolors.ListedColormap(ACTION_COLORS)
-
-    n_grids = len(GRID_NAMES)
-    fig, axes = plt.subplots(2, n_grids, figsize=(4 * n_grids, 7))
-
-    for col, grid_name in enumerate(GRID_NAMES):
-        res = grid_results[grid_name]
-        disc = res["disc"]
-
-        # Build a fine meshgrid over (theta, thetadot) at x=0, xdot=0
-        theta_lim = 0.20  # rad — CartPole terminal threshold is ±0.2095
-        thetadot_lim = 3.0
-        N = 120
-        thetas = np.linspace(-theta_lim, theta_lim, N)
-        thetadots = np.linspace(-thetadot_lim, thetadot_lim, N)
-        TH, TD = np.meshgrid(thetas, thetadots)
-
-        obs_grid = np.stack(
-            [
-                np.zeros_like(TH.ravel()),  # x = 0
-                np.zeros_like(TH.ravel()),  # xdot = 0
-                TH.ravel(),
-                TD.ravel(),
-            ],
-            axis=1,
-        )
-
-        states = np.array([disc.obs_to_state(o) for o in obs_grid])
-
-        for row, (algo, policy_key) in enumerate(
-            [("VI", "policy_vi"), ("PI", "policy_pi")]
-        ):
-            policy = res[policy_key]
-            actions = policy[states].reshape(N, N)
-
-            ax = axes[row, col]
-            ax.imshow(
-                actions,
-                origin="lower",
-                aspect="auto",
-                extent=[-theta_lim, theta_lim, -thetadot_lim, thetadot_lim],
-                cmap=cmap,
-                vmin=-0.5,
-                vmax=1.5,
-                interpolation="nearest",
-            )
-            # Mark the terminal angle boundary
-            ax.axvline(0.2095, color="red", linewidth=0.8, linestyle="--", alpha=0.7)
-            ax.axvline(-0.2095, color="red", linewidth=0.8, linestyle="--", alpha=0.7)
-            ax.axhline(0, color="white", linewidth=0.5, linestyle=":", alpha=0.5)
-            ax.axvline(0, color="white", linewidth=0.5, linestyle=":", alpha=0.5)
-
-            if row == 0:
-                ax.set_title(f"{grid_name}\n({disc.n_states} states)", fontsize=9)
-            if col == 0:
-                ax.set_ylabel(f"{algo}\nθ̇ (rad/s)", fontsize=9)
-            else:
-                ax.set_ylabel("")
-                ax.set_yticklabels([])
-            if row == 1:
-                ax.set_xlabel("θ (rad)", fontsize=9)
-            else:
-                ax.set_xticklabels([])
-
-    legend_patches = [
-        mpatches.Patch(color=ACTION_COLORS[0], label="Push left (0)"),
-        mpatches.Patch(color=ACTION_COLORS[1], label="Push right (1)"),
-    ]
-    fig.legend(
-        handles=legend_patches,
-        loc="lower center",
-        ncol=2,
-        fontsize=10,
-        frameon=True,
-        bbox_to_anchor=(0.5, -0.01),
-    )
-    fig.suptitle(
-        "CartPole Policy Slice: (θ, θ̇) at x=0, ẋ=0",
-        fontsize=12,
-        fontweight="bold",
-    )
-    plt.tight_layout(rect=[0, 0.04, 1, 0.97])
-    out = fig_dir / "cartpole_policy_slice.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    logger.info("Saved → %s", out)
-
-
-HP_EVAL_EPISODES = CP_EVAL_EPISODES_HP
+# ── HP sweep ──────────────────────────────────────────────────────────────────
 
 
 def _hp_sweep_cartpole(
-    T: np.ndarray, R: np.ndarray, disc, grid_name: str = "default"
+    T: np.ndarray,
+    R: np.ndarray,
+    disc: CartPoleDiscretizer,
+    grid_name: str = "default",
 ) -> list[dict]:
-    """Sweep gamma and delta for VI and PI on the given CartPole grid model.
-
-    Gamma sweep: vary gamma, hold delta at reference.
-    Delta sweep: vary delta, hold gamma at 0.99.
-
-    Returns list of row dicts for hp_validation.csv.
-    """
+    """Sweep gamma and delta for VI and PI on the given CartPole grid."""
     rows: list[dict] = []
 
     def _eval(policy):
         results = eval_cartpole_policy(
-            policy, disc, seeds=SEEDS, n_episodes=HP_EVAL_EPISODES
+            policy, disc, seeds=SEEDS, n_episodes=CP_EVAL_EPISODES_HP
         )
         lens = [ep_len for _, ep_len in results]
         return float(np.mean(lens)), float(
             np.percentile(lens, 75) - np.percentile(lens, 25)
         )
 
-    # ── gamma sweep ───────────────────────────────────────────────────────────
     for gamma in VI_PI_HP_GAMMA_VALUES:
         for algo_label, run_fn, ref_delta in [
             ("VI", run_vi, VI_DELTA),
@@ -447,8 +235,7 @@ def _hp_sweep_cartpole(
                 wall,
             )
 
-    # ── delta sweep ───────────────────────────────────────────────────────────
-    ref_gamma = 0.99
+    ref_gamma = VI_GAMMA
     for delta in VI_PI_HP_DELTA_VALUES:
         for algo_label, run_fn in [("VI", run_vi), ("PI", run_pi)]:
             t0 = time.perf_counter()
@@ -488,38 +275,16 @@ def _hp_sweep_cartpole(
     return rows
 
 
-def _save_figures(grid_results: dict) -> None:
-    fig_dir = FIGURES_DIR / PHASE_DIR
-    fig_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("=== Phase 3 Figures ===")
-    _plot_convergence_curves(
-        grid_results,
-        "vi",
-        fig_dir,
-        "cartpole_vi_convergence.png",
-        "Value Iteration Convergence — CartPole (by grid)",
-    )
-    _plot_convergence_curves(
-        grid_results,
-        "pi",
-        fig_dir,
-        "cartpole_pi_convergence.png",
-        "Policy Iteration Convergence — CartPole (by grid)",
-    )
-    _plot_discretization_study(grid_results, fig_dir)
-    _plot_policy_slice(grid_results, fig_dir)
+# ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-
-def run() -> None:
-    metrics_dir = METRICS_DIR / PHASE_DIR
-    metrics_dir.mkdir(parents=True, exist_ok=True)
-    METADATA_DIR.mkdir(parents=True, exist_ok=True)
+def run() -> Path:
+    """Execute Phase 3 computation, write all artifacts, return checkpoint path."""
+    paths = resolve_phase_paths(_PHASE_ID, _SLUG)
+    paths.makedirs()
 
     logger.info("=== Phase 3: VI & PI on CartPole (grid ablation) ===")
-    grid_results = {name: _run_grid(name) for name in GRID_NAMES}
+    grid_results = {name: _run_grid(name) for name in CP_GRID_NAMES}
 
     # ── CSVs ──────────────────────────────────────────────────────────────────
     vi_conv, pi_conv = [], []
@@ -582,37 +347,49 @@ def run() -> None:
             }
         )
 
-    pd.DataFrame(vi_conv).to_csv(metrics_dir / "vi_convergence.csv", index=False)
-    pd.DataFrame(pi_conv).to_csv(metrics_dir / "pi_convergence.csv", index=False)
+    pd.DataFrame(vi_conv).to_csv(paths.metrics_dir / "vi_convergence.csv", index=False)
+    pd.DataFrame(pi_conv).to_csv(paths.metrics_dir / "pi_convergence.csv", index=False)
     pd.DataFrame(eval_per_seed).to_csv(
-        metrics_dir / "policy_eval_per_seed.csv", index=False
+        paths.metrics_dir / "policy_eval_per_seed.csv", index=False
     )
     pd.DataFrame(eval_aggregate).to_csv(
-        metrics_dir / "policy_eval_aggregate.csv", index=False
+        paths.metrics_dir / "policy_eval_aggregate.csv", index=False
     )
     pd.DataFrame(policy_agreement_rows).to_csv(
-        metrics_dir / "policy_agreement.csv", index=False
+        paths.metrics_dir / "policy_agreement.csv", index=False
     )
     pd.DataFrame(study_rows).to_csv(
-        metrics_dir / "discretization_study.csv", index=False
+        paths.metrics_dir / "discretization_study.csv", index=False
     )
-    logger.info("Metrics saved → %s", metrics_dir)
+    logger.info("Metrics saved → %s", paths.metrics_dir)
 
-    # ── Hyperparameter validation sweep (default grid only) ───────────────────
+    # ── HP sweep (default grid) ───────────────────────────────────────────────
     logger.info("=== VI/PI Hyperparameter Validation Sweep (default grid) ===")
     default_res = grid_results["default"]
     hp_rows = _hp_sweep_cartpole(
         default_res["T"], default_res["R"], default_res["disc"]
     )
     hp_df = pd.DataFrame(hp_rows)
-    hp_df.to_csv(metrics_dir / "hp_validation.csv", index=False)
-    logger.info("HP validation saved → %s", metrics_dir / "hp_validation.csv")
+    hp_df.to_csv(paths.metrics_dir / "hp_validation.csv", index=False)
+    logger.info("HP validation saved → %s", paths.metrics_dir / "hp_validation.csv")
 
-    # ── Figures ───────────────────────────────────────────────────────────────
-    _save_figures(grid_results)
+    # ── Plot-support NPZ ──────────────────────────────────────────────────────
+    # Persist per-grid policies so visualize() can render the policy-slice
+    # figure without re-running model building or planning.
+    npz_data = {}
+    for grid_name in CP_GRID_NAMES:
+        res = grid_results[grid_name]
+        npz_data[f"policy_vi_{grid_name}"] = res["policy_vi"]
+        npz_data[f"policy_pi_{grid_name}"] = res["policy_pi"]
+    npz_path = paths.metrics_dir / "plot_cp_grids.npz"
+    np.savez_compressed(npz_path, **npz_data)
+    logger.info("Plot-support NPZ saved → %s", npz_path)
 
     # ── Checkpoint JSON ───────────────────────────────────────────────────────
-    checkpoint = {
+    hp_vi_gamma = hp_df[(hp_df.algorithm == "VI") & (hp_df.sweep_param == "gamma")]
+    hp_pi_gamma = hp_df[(hp_df.algorithm == "PI") & (hp_df.sweep_param == "gamma")]
+
+    grid_summary = {
         name: {
             "bins": res["bins"],
             "n_states": res["n_states"],
@@ -641,35 +418,73 @@ def run() -> None:
         }
         for name, res in grid_results.items()
     }
-    hp_vi_gamma = hp_df[(hp_df.algorithm == "VI") & (hp_df.sweep_param == "gamma")]
-    hp_pi_gamma = hp_df[(hp_df.algorithm == "PI") & (hp_df.sweep_param == "gamma")]
-    checkpoint["hp_validation"] = {
-        "grid": "default",
-        "validated_hyperparameters": ["gamma", "delta"],
-        "gamma_sweep_gammas": list(VI_PI_HP_GAMMA_VALUES),
-        "delta_sweep_deltas": list(VI_PI_HP_DELTA_VALUES),
-        "vi_gamma_episode_len_range": [
-            round(float(hp_vi_gamma.mean_episode_len.min()), 2),
-            round(float(hp_vi_gamma.mean_episode_len.max()), 2),
-        ],
-        "pi_gamma_episode_len_range": [
-            round(float(hp_pi_gamma.mean_episode_len.min()), 2),
-            round(float(hp_pi_gamma.mean_episode_len.max()), 2),
-        ],
-        "note": (
-            "gamma materially impacts policy quality on CartPole (lower gamma → "
-            "myopic policy → shorter episodes); delta affects convergence speed "
-            "but not final policy quality for values ≤1e-3."
-        ),
+
+    checkpoint = {
+        "schema_version": SCHEMA_VERSION,
+        "phase_id": _PHASE_ID,
+        "slug": _SLUG,
+        "upstream_inputs": [],
+        "outputs": {
+            "metrics_dir": str(paths.metrics_dir),
+            "figures_dir": str(paths.figures_dir),
+            "plot_support": [str(npz_path)],
+        },
+        "config_snapshot": {
+            "vi_gamma": VI_GAMMA,
+            "vi_delta": VI_DELTA,
+            "pi_gamma": PI_GAMMA,
+            "pi_delta": PI_DELTA,
+            "vi_pi_consec_sweeps": VI_PI_CONSEC_SWEEPS,
+            "seeds": SEEDS,
+            "eval_episodes_main": CP_EVAL_EPISODES_MAIN,
+            "eval_episodes_hp": CP_EVAL_EPISODES_HP,
+            "grid_names": CP_GRID_NAMES,
+        },
+        "summary": {
+            **grid_summary,
+            "hp_validation": {
+                "grid": "default",
+                "validated_hyperparameters": ["gamma", "delta"],
+                "eval_episodes_per_setting": CP_EVAL_EPISODES_HP,
+                "gamma_sweep_gammas": list(VI_PI_HP_GAMMA_VALUES),
+                "delta_sweep_deltas": list(VI_PI_HP_DELTA_VALUES),
+                "vi_gamma_episode_len_range": [
+                    round(float(hp_vi_gamma.mean_episode_len.min()), 2),
+                    round(float(hp_vi_gamma.mean_episode_len.max()), 2),
+                ],
+                "pi_gamma_episode_len_range": [
+                    round(float(hp_pi_gamma.mean_episode_len.min()), 2),
+                    round(float(hp_pi_gamma.mean_episode_len.max()), 2),
+                ],
+                "note": (
+                    "gamma materially impacts policy quality on CartPole (lower gamma → "
+                    "myopic policy → shorter episodes); delta affects convergence speed "
+                    "but not final policy quality for values ≤1e-3."
+                ),
+            },
+        },
     }
 
-    phase3_path = METADATA_DIR / "phase3.json"
-    with open(phase3_path, "w") as f:
-        json.dump(checkpoint, f, indent=2)
-    logger.info("Phase 3 checkpoint saved → %s", phase3_path)
+    write_checkpoint_json(checkpoint, paths.checkpoint_path)
+    logger.info("Phase 3 checkpoint saved → %s", paths.checkpoint_path)
+
+    # ── Validate all required outputs exist ───────────────────────────────────
+    validate_required_outputs(
+        [
+            paths.metrics_dir / "vi_convergence.csv",
+            paths.metrics_dir / "pi_convergence.csv",
+            paths.metrics_dir / "policy_eval_per_seed.csv",
+            paths.metrics_dir / "policy_eval_aggregate.csv",
+            paths.metrics_dir / "policy_agreement.csv",
+            paths.metrics_dir / "discretization_study.csv",
+            paths.metrics_dir / "hp_validation.csv",
+            npz_path,
+            paths.checkpoint_path,
+        ]
+    )
 
     logger.info("=== Phase 3 Summary ===")
-    for name in GRID_NAMES:
+    for name in CP_GRID_NAMES:
         res = grid_results[name]
         logger.info(
             "Grid %-8s | VI: %3d iters, len=%.1f | PI: %3d iters, len=%.1f | "
@@ -683,6 +498,59 @@ def run() -> None:
             res["policy_agreement"] * 100,
         )
 
+    return paths.checkpoint_path
+
+
+def visualize(checkpoint_path: Path) -> list[Path]:
+    """Render Phase 3 figures from saved artifacts. No live computation."""
+    checkpoint = load_checkpoint_json(checkpoint_path)
+
+    metrics_dir = Path(checkpoint["outputs"]["metrics_dir"])
+    figures_dir = Path(checkpoint["outputs"]["figures_dir"])
+    npz_path = Path(checkpoint["outputs"]["plot_support"][0])
+    summary = checkpoint["summary"]
+    cfg_snap = checkpoint["config_snapshot"]
+
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    grid_n_states = {g: summary[g]["n_states"] for g in CP_GRID_NAMES}
+
+    logger.info("=== Phase 3 Figures ===")
+    figs: list[Path] = []
+
+    out = plot_cp_convergence(
+        metrics_dir,
+        "vi",
+        title="Value Iteration Convergence — CartPole (by grid)",
+        delta=cfg_snap["vi_delta"],
+        grid_n_states=grid_n_states,
+        fig_dir=figures_dir,
+    )
+    logger.info("Saved → %s", out)
+    figs.append(out)
+
+    out = plot_cp_convergence(
+        metrics_dir,
+        "pi",
+        title="Policy Iteration Convergence — CartPole (by grid)",
+        delta=cfg_snap["pi_delta"],
+        grid_n_states=grid_n_states,
+        fig_dir=figures_dir,
+    )
+    logger.info("Saved → %s", out)
+    figs.append(out)
+
+    out = plot_cp_discretization_study(metrics_dir, figures_dir)
+    logger.info("Saved → %s", out)
+    figs.append(out)
+
+    out = plot_cp_policy_slice(npz_path, grid_n_states, figures_dir)
+    logger.info("Saved → %s", out)
+    figs.append(out)
+
+    return figs
+
 
 if __name__ == "__main__":
-    run()
+    checkpoint_path = run()
+    visualize(checkpoint_path)

@@ -27,6 +27,58 @@ Seed semantics differ by method type:
 
 No single-seed results submitted. All reported performance metrics are mean ± IQR across the 5 seeds.
 
+## Preferred Phase Lifecycle (go-forward contract)
+
+All phases implemented or refactored going forward should expose the same lightweight lifecycle:
+
+- `run() -> Path`: compute results, write artifacts, and return the checkpoint JSON path
+- `visualize(checkpoint_path: Path) -> list[Path]`: reload artifacts from disk only and render all figures for that phase
+
+`__main__` may call `run()` followed immediately by `visualize(checkpoint_path)`, but `visualize()` must not consume runtime objects returned from `run()`.
+
+This is a function contract, not a requirement for a heavy class hierarchy.
+
+## Artifact Boundary Rules
+
+- A phase may declare zero or more upstream artifact inputs.
+- A phase never consumes another phase's Python runtime variables.
+- Plotting never consumes a phase's live Python runtime variables.
+- When CSV/JSON are insufficient for plotting, persist a small `plot_*.npz` support artifact and reload it inside `visualize()`.
+- Shared downstream model artifacts belong in `artifacts/metadata/`; phase-local plot-support artifacts belong next to metrics.
+
+## Target Checkpoint Schema (for refactored phases 1–3 and future phases)
+
+The checkpoint JSON remains human-readable, but it should also serve as a machine-readable manifest for `visualize()` and downstream phases.
+
+Target top-level fields:
+
+- `schema_version`
+- `phase_id`
+- `slug`
+- `upstream_inputs`
+- `outputs`
+- `config_snapshot`
+- `summary`
+
+The `outputs` section should list the metrics directory, figure directory, and any plot-support or shared model artifacts needed to reproduce figures or feed downstream phases.
+
+## Plotting Contract
+
+Plotting should be dynamic from saved metrics and metadata wherever possible:
+
+- curve extents
+- legend entries
+- titles and annotations derived from saved run context
+- error bars and value ranges
+
+The plotting layer should keep only fixed semantic defaults centralized in `src/utils/plotting.py`:
+
+- algorithm colors
+- action colors
+- environment axis ordering
+- DPI and readable font defaults
+- environment-defined markers such as CartPole terminal thresholds
+
 ## Reporting Conventions
 
 **Output schema — model-free phases:**
@@ -49,6 +101,7 @@ Constants: `W=100`, `RL_CONVERGENCE_DELTA=0.01`, `RL_CONVERGENCE_M=3` (all in `c
 **DP evaluation outputs:**
 - `policy_eval_per_seed.csv` — one row per (algorithm, seed)
 - `policy_eval_aggregate.csv` — one row per `(algorithm)` for Blackjack; one row per `(grid, algorithm)` for CartPole; includes `eval_return_iqr` or `eval_episode_len_iqr`
+- Optional `plot_*.npz` artifacts may be written when figures need arrays or decoded grids that are not recoverable from summary CSVs alone.
 
 ## DP Model Construction
 
