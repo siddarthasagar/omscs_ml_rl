@@ -152,13 +152,11 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 
 **Goal:** Assess how discretization coarseness interacts with DP convergence; disentangle binning quality from model quality.
 
-**Input contract:** declared artifact inputs from Phase 1 for the default CartPole discretizer/model context; any additional grid-specific model artifacts produced inside Phase 3 are treated as Phase 3 outputs, not shared runtime state.
+**Input contract:** None — Phase 3 is self-contained. It builds independent T/R models for every grid (coarse, default, fine) from fresh rollouts and does not load or depend on Phase 1 artifacts. Any reuse of Phase 1 model data would be optional caching, not a phase contract requirement. This design keeps all three grids symmetric — no grid receives special treatment, coverage diagnostics are directly comparable, and the phase reruns correctly without Phase 1 artifacts present.
 
 **Seed usage:** One planning run per algorithm per grid. Policy quality evaluated over 5 seeds × 100 episodes each.
 
 **Tasks:**
-- Load shared CartPole T/R model (default grid, built Phase 1)
-- Run VI and PI once each on default grid; evaluate policy with 5 seeds
 - Ablate grids: coarse `(1,1,6,12)` → default `(3,3,8,12)` → fine `(5,5,10,16)`
   - Rebuild T/R model for each grid; record per-grid coverage diagnostics
   - Run **both VI and PI** on each grid; evaluate each policy with 5 seeds

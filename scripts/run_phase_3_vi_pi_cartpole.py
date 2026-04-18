@@ -31,6 +31,7 @@ import pandas as pd
 from src.algorithms import eval_cartpole_policy, run_pi, run_vi
 from src.config import (
     CARTPOLE_GRID_CONFIGS,
+    CARTPOLE_GRID_NAMES,
     CARTPOLE_MODEL_MIN_VISITS,
     CARTPOLE_MODEL_ROLLOUT_STEPS,
     CARTPOLE_MODEL_SEED,
@@ -56,7 +57,6 @@ from src.utils.phase_artifacts import (
     write_checkpoint_json,
 )
 from src.utils.plotting import (
-    CP_GRID_NAMES,
     plot_cp_convergence,
     plot_cp_discretization_study,
     plot_cp_policy_slice,
@@ -284,7 +284,7 @@ def run() -> Path:
     paths.makedirs()
 
     logger.info("=== Phase 3: VI & PI on CartPole (grid ablation) ===")
-    grid_results = {name: _run_grid(name) for name in CP_GRID_NAMES}
+    grid_results = {name: _run_grid(name) for name in CARTPOLE_GRID_NAMES}
 
     # ── CSVs ──────────────────────────────────────────────────────────────────
     vi_conv, pi_conv = [], []
@@ -377,7 +377,7 @@ def run() -> Path:
     # Persist per-grid policies so visualize() can render the policy-slice
     # figure without re-running model building or planning.
     npz_data = {}
-    for grid_name in CP_GRID_NAMES:
+    for grid_name in CARTPOLE_GRID_NAMES:
         res = grid_results[grid_name]
         npz_data[f"policy_vi_{grid_name}"] = res["policy_vi"]
         npz_data[f"policy_pi_{grid_name}"] = res["policy_pi"]
@@ -423,6 +423,9 @@ def run() -> Path:
         "schema_version": SCHEMA_VERSION,
         "phase_id": _PHASE_ID,
         "slug": _SLUG,
+        # Intentionally empty: Phase 3 builds all three grids independently
+        # (each grid constructs its own CartPole model via fresh rollouts).
+        # It does NOT depend on the Phase 1 default-grid model artifact.
         "upstream_inputs": [],
         "outputs": {
             "metrics_dir": str(paths.metrics_dir),
@@ -438,7 +441,18 @@ def run() -> Path:
             "seeds": SEEDS,
             "eval_episodes_main": CP_EVAL_EPISODES_MAIN,
             "eval_episodes_hp": CP_EVAL_EPISODES_HP,
-            "grid_names": CP_GRID_NAMES,
+            "grid_names": CARTPOLE_GRID_NAMES,
+            # Serialise tuples → lists for JSON compatibility.
+            # Saved here so visualize() can reconstruct discretizers from the
+            # checkpoint rather than from the current source config — rerenders
+            # of old checkpoints stay reproducible even if configs change later.
+            "grid_configs": {
+                name: {
+                    k: list(v) if isinstance(v, tuple) else v
+                    for k, v in CARTPOLE_GRID_CONFIGS[name].items()
+                }
+                for name in CARTPOLE_GRID_NAMES
+            },
         },
         "summary": {
             **grid_summary,
@@ -484,7 +498,7 @@ def run() -> Path:
     )
 
     logger.info("=== Phase 3 Summary ===")
-    for name in CP_GRID_NAMES:
+    for name in CARTPOLE_GRID_NAMES:
         res = grid_results[name]
         logger.info(
             "Grid %-8s | VI: %3d iters, len=%.1f | PI: %3d iters, len=%.1f | "
@@ -513,7 +527,28 @@ def visualize(checkpoint_path: Path) -> list[Path]:
 
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    grid_n_states = {g: summary[g]["n_states"] for g in CP_GRID_NAMES}
+    grid_names: list[str] = cfg_snap["grid_names"]
+    grid_configs = cfg_snap["grid_configs"]
+
+    # Validate checkpoint integrity before touching any plotting code.
+    grids_npz = np.load(npz_path)
+    missing: list[str] = []
+    for g in grid_names:
+        if g not in summary:
+            missing.append(f"summary[{g!r}]")
+        if g not in grid_configs:
+            missing.append(f"grid_configs[{g!r}]")
+        for algo in ("vi", "pi"):
+            key = f"policy_{algo}_{g}"
+            if key not in grids_npz:
+                missing.append(f"NPZ key {key!r}")
+    if missing:
+        raise KeyError(
+            "Checkpoint/NPZ integrity check failed — missing keys:\n"
+            + "\n".join(f"  {m}" for m in missing)
+        )
+
+    grid_n_states = {g: summary[g]["n_states"] for g in grid_names}
 
     logger.info("=== Phase 3 Figures ===")
     figs: list[Path] = []
@@ -524,6 +559,7 @@ def visualize(checkpoint_path: Path) -> list[Path]:
         title="Value Iteration Convergence — CartPole (by grid)",
         delta=cfg_snap["vi_delta"],
         grid_n_states=grid_n_states,
+        grid_names=grid_names,
         fig_dir=figures_dir,
     )
     logger.info("Saved → %s", out)
@@ -535,16 +571,19 @@ def visualize(checkpoint_path: Path) -> list[Path]:
         title="Policy Iteration Convergence — CartPole (by grid)",
         delta=cfg_snap["pi_delta"],
         grid_n_states=grid_n_states,
+        grid_names=grid_names,
         fig_dir=figures_dir,
     )
     logger.info("Saved → %s", out)
     figs.append(out)
 
-    out = plot_cp_discretization_study(metrics_dir, figures_dir)
+    out = plot_cp_discretization_study(metrics_dir, grid_names, figures_dir)
     logger.info("Saved → %s", out)
     figs.append(out)
 
-    out = plot_cp_policy_slice(npz_path, grid_n_states, figures_dir)
+    out = plot_cp_policy_slice(
+        npz_path, grid_n_states, grid_configs, grid_names, figures_dir
+    )
     logger.info("Saved → %s", out)
     figs.append(out)
 

@@ -26,9 +26,6 @@ BJ_ACTION_COLORS: dict[str, str] = {
     "Stick": "#4C72B0",  # blue
     "Hit": "#DD8452",  # orange
 }
-
-# CartPole grid display constants — semantic ordering for the ablation study.
-CP_GRID_NAMES: list[str] = ["coarse", "default", "fine"]  # canonical display order
 CP_GRID_COLORS: dict[str, str] = {
     "coarse": "#DD8452",  # orange
     "default": "#4C72B0",  # blue
@@ -263,9 +260,9 @@ def plot_bj_policy_map(
         frameon=True,
         bbox_to_anchor=(0.5, -0.01),
     )
-    fig.suptitle("VI Optimal Policy — Blackjack", fontsize=12, fontweight="bold")
+    fig.suptitle("Optimal Policy — Blackjack (VI = PI)", fontsize=12, fontweight="bold")
     plt.tight_layout(rect=[0, 0.04, 1, 0.96])
-    out = fig_dir / "blackjack_vi_policy_heatmap.png"
+    out = fig_dir / "blackjack_policy_heatmap.png"
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
     return out
@@ -321,9 +318,9 @@ def plot_bj_value_surface(
         ax.view_init(elev=28, azim=-55)
 
     fig.colorbar(surf, ax=fig.axes, label="V(s)", shrink=0.5, aspect=12, pad=0.05)
-    fig.suptitle("VI Value Function — Blackjack", fontsize=12, fontweight="bold")
+    fig.suptitle("Blackjack Value Surface (VI)", fontsize=12, fontweight="bold")
     plt.tight_layout()
-    out = fig_dir / "blackjack_vi_value_heatmap.png"
+    out = fig_dir / "blackjack_value_surface_3d.png"
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
     return out
@@ -338,6 +335,7 @@ def plot_cp_convergence(
     title: str,
     delta: float,
     grid_n_states: dict[str, int],
+    grid_names: list[str],
     fig_dir: Path,
 ) -> Path:
     """ΔV vs iteration for one algorithm, one curve per grid. Reads from CSV.
@@ -348,6 +346,7 @@ def plot_cp_convergence(
         title:          figure title
         delta:          convergence threshold (VI_DELTA or PI_DELTA) for the δ line
         grid_n_states:  {"coarse": N, "default": N, "fine": N} for legend labels
+        grid_names:     canonical grid order from the checkpoint (not source constant)
         fig_dir:        output directory
     """
     import matplotlib
@@ -359,7 +358,7 @@ def plot_cp_convergence(
     df = pd.read_csv(metrics_dir / f"{algo}_convergence.csv")
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    for grid_name in CP_GRID_NAMES:
+    for grid_name in grid_names:
         sub = df[df["grid"] == grid_name]
         n = grid_n_states.get(grid_name, "?")
         ax.semilogy(
@@ -390,10 +389,19 @@ def plot_cp_convergence(
     return out
 
 
-def plot_cp_discretization_study(metrics_dir: Path, fig_dir: Path) -> Path:
+def plot_cp_discretization_study(
+    metrics_dir: Path,
+    grid_names: list[str],
+    fig_dir: Path,
+) -> Path:
     """3-panel discretization study. Reads from discretization_study.csv.
 
     Panels: mean episode length vs grid, wall-clock vs grid, coverage % vs grid.
+
+    Args:
+        metrics_dir:  directory containing discretization_study.csv
+        grid_names:   canonical grid order from the checkpoint (not source constant)
+        fig_dir:      output directory
     """
     import matplotlib
 
@@ -402,15 +410,15 @@ def plot_cp_discretization_study(metrics_dir: Path, fig_dir: Path) -> Path:
     import pandas as pd
 
     df = pd.read_csv(metrics_dir / "discretization_study.csv")
-    x = list(range(len(CP_GRID_NAMES)))
+    x = list(range(len(grid_names)))
 
     fig, axes = plt.subplots(1, 3, figsize=(13, 4))
 
     # Panel 1: policy quality
     for algo in ["VI", "PI"]:
         sub = df[df["algorithm"] == algo].set_index("grid")
-        means = [sub.loc[g, "mean_episode_len"] for g in CP_GRID_NAMES]
-        iqrs = [sub.loc[g, "eval_episode_len_iqr"] for g in CP_GRID_NAMES]
+        means = [sub.loc[g, "mean_episode_len"] for g in grid_names]
+        iqrs = [sub.loc[g, "eval_episode_len_iqr"] for g in grid_names]
         axes[0].errorbar(
             x,
             means,
@@ -422,7 +430,7 @@ def plot_cp_discretization_study(metrics_dir: Path, fig_dir: Path) -> Path:
             color=ALGO_COLORS[algo],
         )
     axes[0].set_xticks(x)
-    axes[0].set_xticklabels(CP_GRID_NAMES)
+    axes[0].set_xticklabels(grid_names)
     axes[0].set_xlabel("Grid")
     axes[0].set_ylabel("Mean episode length")
     axes[0].set_title("Policy quality vs grid")
@@ -432,12 +440,12 @@ def plot_cp_discretization_study(metrics_dir: Path, fig_dir: Path) -> Path:
     # Panel 2: planning wall-clock
     for algo in ["VI", "PI"]:
         sub = df[df["algorithm"] == algo].set_index("grid")
-        walls = [sub.loc[g, "wall_clock_s"] for g in CP_GRID_NAMES]
+        walls = [sub.loc[g, "wall_clock_s"] for g in grid_names]
         axes[1].plot(
             x, walls, label=algo, marker="o", linewidth=1.5, color=ALGO_COLORS[algo]
         )
     axes[1].set_xticks(x)
-    axes[1].set_xticklabels(CP_GRID_NAMES)
+    axes[1].set_xticklabels(grid_names)
     axes[1].set_xlabel("Grid")
     axes[1].set_ylabel("Planning wall-clock (s)")
     axes[1].set_title("Planning time vs grid")
@@ -447,11 +455,11 @@ def plot_cp_discretization_study(metrics_dir: Path, fig_dir: Path) -> Path:
     # Panel 3: model coverage
     # Use VI rows (coverage_pct is per-grid, same for both algorithms)
     sub_vi = df[df["algorithm"] == "VI"].set_index("grid")
-    coverages = [sub_vi.loc[g, "coverage_pct"] * 100 for g in CP_GRID_NAMES]
+    coverages = [sub_vi.loc[g, "coverage_pct"] * 100 for g in grid_names]
     bars = axes[2].bar(
         x,
         coverages,
-        color=[CP_GRID_COLORS[g] for g in CP_GRID_NAMES],
+        color=[CP_GRID_COLORS[g] for g in grid_names],
         alpha=0.85,
         edgecolor="white",
     )
@@ -465,7 +473,7 @@ def plot_cp_discretization_study(metrics_dir: Path, fig_dir: Path) -> Path:
             fontsize=9,
         )
     axes[2].set_xticks(x)
-    axes[2].set_xticklabels(CP_GRID_NAMES)
+    axes[2].set_xticklabels(grid_names)
     axes[2].set_xlabel("Grid")
     axes[2].set_ylabel("Coverage (%)")
     axes[2].set_title("Model coverage vs grid")
@@ -483,16 +491,21 @@ def plot_cp_discretization_study(metrics_dir: Path, fig_dir: Path) -> Path:
 def plot_cp_policy_slice(
     npz_path: Path,
     grid_n_states: dict[str, int],
+    grid_configs: dict[str, dict],
+    grid_names: list[str],
     fig_dir: Path,
 ) -> Path:
     """Decision-boundary slice in (θ, θ̇) at x=0, ẋ=0. Loads from NPZ.
 
     Policies are loaded from the plot-support NPZ. Discretizers are
-    reconstructed from CARTPOLE_GRID_CONFIGS (stable config constants).
+    reconstructed from the saved grid_configs (from checkpoint config_snapshot),
+    not from the current source config, so rerenders remain reproducible.
 
     Args:
         npz_path:       path to plot_cp_grids.npz
         grid_n_states:  {"coarse": N, "default": N, "fine": N} for subplot titles
+        grid_configs:   per-grid discretizer configs, as stored in the checkpoint
+        grid_names:     canonical grid order from the checkpoint (not source constant)
         fig_dir:        output directory
     """
     import matplotlib
@@ -502,7 +515,6 @@ def plot_cp_policy_slice(
     import matplotlib.patches as mpatches
     import matplotlib.pyplot as plt
 
-    from src.config import CARTPOLE_GRID_CONFIGS
     from src.envs.cartpole_discretizer import CartPoleDiscretizer
 
     grids = np.load(npz_path)
@@ -520,11 +532,11 @@ def plot_cp_policy_slice(
 
     cmap = mcolors.ListedColormap([ALGO_COLORS["VI"], ALGO_COLORS["PI"]])
 
-    n_grids = len(CP_GRID_NAMES)
+    n_grids = len(grid_names)
     fig, axes = plt.subplots(2, n_grids, figsize=(4 * n_grids, 7))
 
-    for col, grid_name in enumerate(CP_GRID_NAMES):
-        disc = CartPoleDiscretizer(grid_config=CARTPOLE_GRID_CONFIGS[grid_name])
+    for col, grid_name in enumerate(grid_names):
+        disc = CartPoleDiscretizer(grid_config=grid_configs[grid_name])
         states = np.array([disc.obs_to_state(o) for o in obs_grid])
         n = grid_n_states.get(grid_name, "?")
 

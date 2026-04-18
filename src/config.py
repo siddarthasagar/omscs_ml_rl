@@ -66,6 +66,11 @@ CARTPOLE_THETADOT_EDGES: list[float] = [  # 12 bins
     3.50,
 ]
 
+# Canonical grid order for the Phase 3 ablation study — drives both experiment
+# execution and figure ordering. Defined here (not in plotting.py) so that a
+# visual refactor cannot silently change which grids are run.
+CARTPOLE_GRID_NAMES: list[str] = ["coarse", "default", "fine"]
+
 # Grid configurations for Phase 3 ablation study (coarse → default → fine).
 # x and xdot use uniform spacing; theta and thetadot are non-uniform (finer near zero).
 CARTPOLE_GRID_CONFIGS: dict[str, dict] = {

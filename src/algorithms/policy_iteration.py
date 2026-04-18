@@ -30,8 +30,10 @@ def _policy_eval(
 
     V = np.zeros(n_states, dtype=np.float64)
     for _ in range(max_iter):
-        V_new = R_pi + gamma * (T_pi @ V)
-        # Guard against overflow / NaN from ill-conditioned rows
+        # Suppress overflow/invalid warnings: ill-conditioned Laplace-smoothed rows
+        # can produce inf/NaN in the matmul; nan_to_num recovers safely.
+        with np.errstate(over="ignore", invalid="ignore"):
+            V_new = R_pi + gamma * (T_pi @ V)
         np.nan_to_num(V_new, nan=0.0, posinf=0.0, neginf=0.0, copy=False)
         if float(np.abs(V_new - V).max()) < delta:
             return V_new

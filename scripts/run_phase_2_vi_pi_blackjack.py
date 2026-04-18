@@ -11,9 +11,9 @@ Outputs:
     hp_validation.csv
     plot_bj_grids.npz          ← plot-support: decoded policy/value grids
   artifacts/figures/phase2_vi_pi_blackjack/
-    blackjack_convergence.png
-    blackjack_vi_policy_heatmap.png
-    blackjack_vi_value_heatmap.png
+    blackjack_convergence.png           ← primary: VI vs PI convergence
+    blackjack_policy_heatmap.png        ← primary: shared optimal policy (VI = PI)
+    blackjack_value_surface_3d.png      ← supplementary: VI value surface (optional)
   artifacts/metadata/phase2.json
   artifacts/logs/phase2.log
 
@@ -372,8 +372,13 @@ def run() -> Path:
     return paths.checkpoint_path
 
 
-def visualize(checkpoint_path: Path) -> list[Path]:
-    """Render Phase 2 figures from saved artifacts. No live computation."""
+def visualize(checkpoint_path: Path, *, supplementary: bool = False) -> list[Path]:
+    """Render Phase 2 figures from saved artifacts. No live computation.
+
+    Args:
+        checkpoint_path:  path to phase2.json
+        supplementary:    if True, also emit the 3D value surface (supplementary only)
+    """
     checkpoint = load_checkpoint_json(checkpoint_path)
 
     metrics_dir = Path(checkpoint["outputs"]["metrics_dir"])
@@ -386,20 +391,22 @@ def visualize(checkpoint_path: Path) -> list[Path]:
     logger.info("=== Phase 2 Figures ===")
     figs: list[Path] = []
 
-    # Convergence figure — reads from CSVs + metadata
+    # Primary figure 1: convergence — reads from CSVs + metadata
     out = plot_bj_convergence(metrics_dir, summary, figures_dir)
     logger.info("Saved → %s", out)
     figs.append(out)
 
-    # Policy heatmap + value surface — load decoded grids from NPZ
+    # Primary figure 2: shared optimal policy heatmap (VI = PI)
     grids = np.load(npz_path)
     out = plot_bj_policy_map(grids["hard_policy"], grids["soft_policy"], figures_dir)
     logger.info("Saved → %s", out)
     figs.append(out)
 
-    out = plot_bj_value_surface(grids["hard_V"], grids["soft_V"], figures_dir)
-    logger.info("Saved → %s", out)
-    figs.append(out)
+    # Supplementary: 3D value surface — not part of the default report output
+    if supplementary:
+        out = plot_bj_value_surface(grids["hard_V"], grids["soft_V"], figures_dir)
+        logger.info("Saved (supplementary) → %s", out)
+        figs.append(out)
 
     return figs
 
