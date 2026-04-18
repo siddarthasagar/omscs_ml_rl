@@ -162,6 +162,8 @@ def _run_grid(grid_name: str) -> dict:
             "trace": trace_pi,
             "eval": pi_eval,
         },
+        "policy_vi": policy_vi,
+        "policy_pi": policy_pi,
         "policy_agreement": agreement,
     }
 
@@ -273,6 +275,108 @@ def _plot_discretization_study(grid_results: dict, fig_dir) -> None:
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     out = fig_dir / "cartpole_discretization_study.png"
     fig.savefig(out, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved → %s", out)
+
+
+def _plot_policy_slice(grid_results: dict, fig_dir) -> None:
+    """Decision-boundary slice in (theta, thetadot) space at x=0, xdot=0.
+
+    One column per grid (coarse/default/fine), two rows (VI / PI).
+    Action 0 = push left (blue), Action 1 = push right (orange).
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.colors as mcolors
+    import matplotlib.patches as mpatches
+    import matplotlib.pyplot as plt
+
+    ACTION_COLORS = ["#4C72B0", "#DD8452"]  # 0=left, 1=right
+    cmap = mcolors.ListedColormap(ACTION_COLORS)
+
+    n_grids = len(GRID_NAMES)
+    fig, axes = plt.subplots(2, n_grids, figsize=(4 * n_grids, 7))
+
+    for col, grid_name in enumerate(GRID_NAMES):
+        res = grid_results[grid_name]
+        disc = res["disc"]
+
+        # Build a fine meshgrid over (theta, thetadot) at x=0, xdot=0
+        theta_lim = 0.20  # rad — CartPole terminal threshold is ±0.2095
+        thetadot_lim = 3.0
+        N = 120
+        thetas = np.linspace(-theta_lim, theta_lim, N)
+        thetadots = np.linspace(-thetadot_lim, thetadot_lim, N)
+        TH, TD = np.meshgrid(thetas, thetadots)
+
+        obs_grid = np.stack(
+            [
+                np.zeros_like(TH.ravel()),  # x = 0
+                np.zeros_like(TH.ravel()),  # xdot = 0
+                TH.ravel(),
+                TD.ravel(),
+            ],
+            axis=1,
+        )
+
+        states = np.array([disc.obs_to_state(o) for o in obs_grid])
+
+        for row, (algo, policy_key) in enumerate(
+            [("VI", "policy_vi"), ("PI", "policy_pi")]
+        ):
+            policy = res[policy_key]
+            actions = policy[states].reshape(N, N)
+
+            ax = axes[row, col]
+            ax.imshow(
+                actions,
+                origin="lower",
+                aspect="auto",
+                extent=[-theta_lim, theta_lim, -thetadot_lim, thetadot_lim],
+                cmap=cmap,
+                vmin=-0.5,
+                vmax=1.5,
+                interpolation="nearest",
+            )
+            # Mark the terminal angle boundary
+            ax.axvline(0.2095, color="red", linewidth=0.8, linestyle="--", alpha=0.7)
+            ax.axvline(-0.2095, color="red", linewidth=0.8, linestyle="--", alpha=0.7)
+            ax.axhline(0, color="white", linewidth=0.5, linestyle=":", alpha=0.5)
+            ax.axvline(0, color="white", linewidth=0.5, linestyle=":", alpha=0.5)
+
+            if row == 0:
+                ax.set_title(f"{grid_name}\n({disc.n_states} states)", fontsize=9)
+            if col == 0:
+                ax.set_ylabel(f"{algo}\nθ̇ (rad/s)", fontsize=9)
+            else:
+                ax.set_ylabel("")
+                ax.set_yticklabels([])
+            if row == 1:
+                ax.set_xlabel("θ (rad)", fontsize=9)
+            else:
+                ax.set_xticklabels([])
+
+    legend_patches = [
+        mpatches.Patch(color=ACTION_COLORS[0], label="Push left (0)"),
+        mpatches.Patch(color=ACTION_COLORS[1], label="Push right (1)"),
+    ]
+    fig.legend(
+        handles=legend_patches,
+        loc="lower center",
+        ncol=2,
+        fontsize=10,
+        frameon=True,
+        bbox_to_anchor=(0.5, -0.01),
+    )
+    fig.suptitle(
+        "CartPole Policy Slice: (θ, θ̇) at x=0, ẋ=0",
+        fontsize=12,
+        fontweight="bold",
+    )
+    plt.tight_layout(rect=[0, 0.04, 1, 0.97])
+    out = fig_dir / "cartpole_policy_slice.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info("Saved → %s", out)
 
@@ -401,6 +505,7 @@ def _save_figures(grid_results: dict) -> None:
         "Policy Iteration Convergence — CartPole (by grid)",
     )
     _plot_discretization_study(grid_results, fig_dir)
+    _plot_policy_slice(grid_results, fig_dir)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

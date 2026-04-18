@@ -87,67 +87,90 @@ def _decode_bj_grids(policy: np.ndarray, V: np.ndarray, n_states: int):
 # ── Figure helpers ────────────────────────────────────────────────────────────
 
 
-def _plot_vi_convergence(trace: list[dict], fig_dir: Path) -> None:
+def _plot_convergence_comparison(
+    trace_vi: list[dict], trace_pi: list[dict], fig_dir: Path
+) -> None:
+    """Single figure: VI and PI convergence shown differently.
+
+    Left (VI):  ΔV curve on log scale — stops when ΔV < δ.
+    Right (PI): policy-changes bars on linear scale — stops when changes = 0.
+    """
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.ticker import MaxNLocator
 
-    iters = [t["iteration"] for t in trace]
-    dvs = [t["delta_v"] for t in trace]
+    vi_iters = [t["iteration"] for t in trace_vi]
+    vi_dvs = [t["delta_v"] for t in trace_vi]
+    pi_iters = [t["iteration"] for t in trace_pi]
+    pi_changes = [t["policy_changes"] for t in trace_pi]
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.semilogy(iters, dvs, color="#4C72B0", linewidth=1.5)
-    ax.axhline(
+    iter_max = max(vi_iters[-1], pi_iters[-1])
+
+    fig, (ax_vi, ax_pi) = plt.subplots(1, 2, figsize=(12, 4))
+
+    # ── Left: VI — value convergence ──────────────────────────────────────────
+    ax_vi.semilogy(vi_iters, vi_dvs, color="#4C72B0", linewidth=1.5, label="max ΔV")
+    ax_vi.axhline(
         VI_DELTA, color="red", linewidth=1, linestyle="--", label=f"δ = {VI_DELTA:.0e}"
     )
-    ax.set_xlabel("Iteration")
-    ax.set_ylabel("max ΔV (log scale)")
-    ax.set_title(
-        f"Value Iteration Convergence — Blackjack\n"
-        f"γ={VI_GAMMA}, δ={VI_DELTA:.0e}, converged at iter {iters[-1]}"
+    ax_vi.set_xlim(0, iter_max + 1)
+    ax_vi.set_xlabel("Iteration")
+    ax_vi.set_ylabel("max |ΔV| (log scale)")
+    ax_vi.set_title(
+        f"Value Iteration  (γ={VI_GAMMA})\n"
+        f"stops when max |ΔV| < δ — converged iter {vi_iters[-1]}"
     )
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    out = fig_dir / "blackjack_vi_convergence.png"
-    fig.savefig(out, dpi=130, bbox_inches="tight")
-    plt.close(fig)
-    logger.info("Saved → %s", out)
+    ax_vi.legend(fontsize=9)
+    ax_vi.grid(True, alpha=0.3)
+    ax_vi.xaxis.set_major_locator(MaxNLocator(integer=True))
 
+    # ── Right: PI — policy stability ──────────────────────────────────────────
+    color_bar = "#DD8452"
+    color_stable = "#2ca02c"
 
-def _plot_pi_convergence(trace: list[dict], fig_dir: Path) -> None:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    iters = [t["iteration"] for t in trace]
-    dvs = [t["delta_v"] for t in trace]
-    changes = [t["policy_changes"] for t in trace]
-
-    fig, ax1 = plt.subplots(figsize=(7, 4))
-    ax1.semilogy(iters, dvs, color="#4C72B0", linewidth=1.5, label="max ΔV")
-    ax1.set_xlabel("Iteration")
-    ax1.set_ylabel("max ΔV (log scale)", color="#4C72B0")
-    ax1.tick_params(axis="y", labelcolor="#4C72B0")
-
-    ax2 = ax1.twinx()
-    ax2.bar(iters, changes, color="#DD8452", alpha=0.6, label="Policy changes")
-    ax2.set_ylabel("Policy changes", color="#DD8452")
-    ax2.tick_params(axis="y", labelcolor="#DD8452")
-
-    ax1.set_title(
-        f"Policy Iteration Convergence — Blackjack\n"
-        f"γ={PI_GAMMA}, δ={PI_DELTA:.0e}, converged at iter {iters[-1]}"
+    # Only plot non-zero bars — zero means stable, shown by the vline annotation instead
+    nonzero = [(i, c) for i, c in zip(pi_iters, pi_changes) if c > 0]
+    if nonzero:
+        nz_iters, nz_changes = zip(*nonzero)
+        ax_pi.bar(
+            nz_iters, nz_changes, color=color_bar, alpha=0.75, label="Policy changes"
+        )
+    ax_pi.set_yscale("log")
+    stable_iter = pi_iters[-1]
+    ax_pi.axvline(
+        stable_iter,
+        color=color_stable,
+        linewidth=1.2,
+        linestyle=":",
+        label=f"Policy stable (iter {stable_iter})",
     )
-    ax1.grid(True, alpha=0.3)
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
-    plt.tight_layout()
-    out = fig_dir / "blackjack_pi_convergence.png"
-    fig.savefig(out, dpi=130, bbox_inches="tight")
+    ax_pi.annotate(
+        "Optimal policy found",
+        xy=(stable_iter, 0),
+        xycoords=("data", "axes fraction"),
+        xytext=(6, 8),
+        textcoords="offset points",
+        fontsize=8,
+        color=color_stable,
+        arrowprops=dict(arrowstyle="-", color=color_stable, lw=0.8),
+    )
+    ax_pi.set_xlim(0, iter_max + 1)
+    ax_pi.set_xlabel("Iteration")
+    ax_pi.set_ylabel("# policy changes (log scale)")
+    ax_pi.set_title(
+        f"Policy Iteration  (γ={PI_GAMMA})\n"
+        f"stops when policy changes = 0 — stable iter {stable_iter}"
+    )
+    ax_pi.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax_pi.legend(fontsize=9)
+    ax_pi.grid(True, alpha=0.3)
+
+    fig.suptitle("VI vs PI Convergence — Blackjack", fontsize=12, fontweight="bold")
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    out = fig_dir / "blackjack_convergence.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info("Saved → %s", out)
 
@@ -155,10 +178,12 @@ def _plot_pi_convergence(trace: list[dict], fig_dir: Path) -> None:
 def _plot_policy_heatmap(
     hard_policy: np.ndarray, soft_policy: np.ndarray, fig_dir: Path
 ) -> None:
+    """Crisp decision-region map: solid colors, sharp action boundaries, cell grid."""
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.colors as mcolors
+    import matplotlib.patches as mpatches
     import matplotlib.pyplot as plt
 
     dealer_labels = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"]
@@ -176,80 +201,111 @@ def _plot_policy_heatmap(
         "S21",
         "BJ",
     ]
-    cmap = mcolors.ListedColormap(["#4C72B0", "#DD8452"])  # 0=stick, 1=hit
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    STICK_COLOR = "#4C72B0"  # blue
+    HIT_COLOR = "#DD8452"  # orange
+    cmap = mcolors.ListedColormap([STICK_COLOR, HIT_COLOR])
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 6))
     for ax, grid, ylabels, title in [
         (axes[0], hard_policy, hard_labels, "Hard hands (no usable ace)"),
-        (axes[1], soft_policy, soft_labels, "Soft hands / BJ (usable ace)"),
+        (axes[1], soft_policy, soft_labels, "Soft hands / usable ace"),
     ]:
-        im = ax.imshow(
-            grid, aspect="auto", origin="lower", cmap=cmap, vmin=-0.5, vmax=1.5
+        n_rows, n_cols = grid.shape
+        ax.imshow(
+            grid,
+            aspect="auto",
+            origin="lower",
+            cmap=cmap,
+            vmin=-0.5,
+            vmax=1.5,
+            interpolation="nearest",
         )
-        ax.set_xticks(range(10))
-        ax.set_xticklabels(dealer_labels)
-        ax.set_yticks(range(len(ylabels)))
+        # Draw sharp cell boundaries
+        for x in range(n_cols + 1):
+            ax.axvline(x - 0.5, color="white", linewidth=0.6, alpha=0.7)
+        for y in range(n_rows + 1):
+            ax.axhline(y - 0.5, color="white", linewidth=0.6, alpha=0.7)
+        ax.set_xticks(range(n_cols))
+        ax.set_xticklabels(dealer_labels, fontsize=9)
+        ax.set_yticks(range(n_rows))
         ax.set_yticklabels(ylabels, fontsize=8)
-        ax.set_xlabel("Dealer card")
-        ax.set_ylabel("Player hand")
-        ax.set_title(title)
+        ax.set_xlabel("Dealer card", fontsize=10)
+        ax.set_ylabel("Player hand", fontsize=10)
+        ax.set_title(title, fontsize=10)
 
-    cbar = fig.colorbar(im, ax=axes.tolist(), ticks=[0, 1], fraction=0.02, pad=0.04)
-    cbar.set_ticklabels(["Stick (0)", "Hit (1)"])
-    fig.suptitle("VI Optimal Policy — Blackjack", fontsize=11, fontweight="bold")
-    plt.tight_layout(rect=[0, 0, 0.93, 0.96])
+    legend_patches = [
+        mpatches.Patch(color=STICK_COLOR, label="Stick"),
+        mpatches.Patch(color=HIT_COLOR, label="Hit"),
+    ]
+    fig.legend(
+        handles=legend_patches,
+        loc="lower center",
+        ncol=2,
+        fontsize=10,
+        frameon=True,
+        bbox_to_anchor=(0.5, -0.01),
+    )
+    fig.suptitle("VI Optimal Policy — Blackjack", fontsize=12, fontweight="bold")
+    plt.tight_layout(rect=[0, 0.04, 1, 0.96])
     out = fig_dir / "blackjack_vi_policy_heatmap.png"
-    fig.savefig(out, dpi=130, bbox_inches="tight")
+    fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info("Saved → %s", out)
 
 
 def _plot_value_heatmap(hard_V: np.ndarray, soft_V: np.ndarray, fig_dir: Path) -> None:
+    """3D value-function surface (Sutton-and-Barto style): dealer × player → V(s)."""
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    dealer_labels = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"]
-    hard_labels = [str(i) for i in range(4, 22)]
-    soft_labels = [
-        "S12",
-        "S13",
-        "S14",
-        "S15",
-        "S16",
-        "S17",
-        "S18",
-        "S19",
-        "S20",
-        "S21",
-        "BJ",
-    ]
+    dealer_ticks = np.arange(1, 11)  # 1..10 → dealer cards 2..A
+    hard_ticks = np.arange(4, 22)  # hard hand player sums
+    soft_ticks = np.arange(12, 23)  # soft hand player sums (S12–S21 + BJ≈22)
+
+    dealer_grid_hard, hand_grid_hard = np.meshgrid(dealer_ticks, hard_ticks)
+    dealer_grid_soft, hand_grid_soft = np.meshgrid(dealer_ticks, soft_ticks)
 
     vmin = float(min(np.nanmin(hard_V), np.nanmin(soft_V)))
     vmax = float(max(np.nanmax(hard_V), np.nanmax(soft_V)))
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-    for ax, grid, ylabels, title in [
-        (axes[0], hard_V, hard_labels, "Hard hands (no usable ace)"),
-        (axes[1], soft_V, soft_labels, "Soft hands / BJ (usable ace)"),
-    ]:
-        im = ax.imshow(
-            grid, aspect="auto", origin="lower", cmap="RdYlGn", vmin=vmin, vmax=vmax
+    fig = plt.figure(figsize=(14, 5))
+    for idx, (Z, dealer_grid, hand_grid, hand_ticks, title) in enumerate(
+        [
+            (hard_V, dealer_grid_hard, hand_grid_hard, hard_ticks, "No usable ace"),
+            (soft_V, dealer_grid_soft, hand_grid_soft, soft_ticks, "Usable ace"),
+        ],
+        start=1,
+    ):
+        ax = fig.add_subplot(1, 2, idx, projection="3d")
+        surf = ax.plot_surface(
+            dealer_grid,
+            hand_grid,
+            Z,
+            cmap="RdYlGn",
+            vmin=vmin,
+            vmax=vmax,
+            edgecolor="none",
+            alpha=0.92,
         )
-        ax.set_xticks(range(10))
-        ax.set_xticklabels(dealer_labels)
-        ax.set_yticks(range(len(ylabels)))
-        ax.set_yticklabels(ylabels, fontsize=8)
-        ax.set_xlabel("Dealer card")
-        ax.set_ylabel("Player hand")
-        ax.set_title(title)
+        ax.set_xlabel("Dealer card", fontsize=8, labelpad=4)
+        ax.set_ylabel("Player sum", fontsize=8, labelpad=4)
+        ax.set_zlabel("V(s)", fontsize=8, labelpad=2)
+        ax.set_title(title, fontsize=10)
+        ax.set_xticks(dealer_ticks[::2])
+        ax.set_xticklabels(["2", "4", "6", "8", "10"], fontsize=7)
+        ax.set_yticks(hand_ticks[::3])
+        ax.set_yticklabels([str(t) for t in hand_ticks[::3]], fontsize=7)
+        ax.tick_params(axis="z", labelsize=7)
+        ax.view_init(elev=28, azim=-55)
 
-    fig.colorbar(im, ax=axes.tolist(), label="V(s)", fraction=0.02, pad=0.04)
-    fig.suptitle("VI Value Function — Blackjack", fontsize=11, fontweight="bold")
-    plt.tight_layout(rect=[0, 0, 0.93, 0.96])
+    fig.colorbar(surf, ax=fig.axes, label="V(s)", shrink=0.5, aspect=12, pad=0.05)
+    fig.suptitle("VI Value Function — Blackjack", fontsize=12, fontweight="bold")
+    plt.tight_layout()
     out = fig_dir / "blackjack_vi_value_heatmap.png"
-    fig.savefig(out, dpi=130, bbox_inches="tight")
+    fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info("Saved → %s", out)
 
@@ -268,8 +324,7 @@ def _save_figures(
     hard_policy, soft_policy, hard_V, soft_V = _decode_bj_grids(
         policy_vi, V_vi, n_states
     )
-    _plot_vi_convergence(trace_vi, fig_dir)
-    _plot_pi_convergence(trace_pi, fig_dir)
+    _plot_convergence_comparison(trace_vi, trace_pi, fig_dir)
     _plot_policy_heatmap(hard_policy, soft_policy, fig_dir)
     _plot_value_heatmap(hard_V, soft_V, fig_dir)
 

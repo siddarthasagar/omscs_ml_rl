@@ -69,5 +69,10 @@ def run_vi(
         if consec >= m_consec:
             break
 
+    # Recompute Q from the final converged V to ensure policy extraction is
+    # consistent with the last value function (the loop's Q may be one sweep old).
+    np.einsum("san,n->sa", T, V, out=Q)
+    Q *= gamma
+    Q += R
     policy = Q.argmax(axis=1).astype(int)
     return V, policy, trace

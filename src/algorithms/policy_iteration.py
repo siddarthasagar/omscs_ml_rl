@@ -72,12 +72,22 @@ def run_pi(
     trace: list[dict] = []
     t0 = time.perf_counter()
 
-    for it in range(1, max_iter + 1):
-        V_new = _policy_eval(T, R, gamma, policy, delta)
+    # Inner eval threshold much tighter than the outer stopping criterion so
+    # that the greedy improvement step sees a well-converged V each iteration.
+    # On sparse/Laplace-smoothed models using the same delta for both causes
+    # the argmax to flip a handful of near-tied states every outer iteration.
+    inner_delta = delta * 1e-4
 
-        # Greedy policy improvement
+    for it in range(1, max_iter + 1):
+        V_new = _policy_eval(T, R, gamma, policy, inner_delta)
+
+        # Greedy policy improvement — tie-stable: keep current action when
+        # Q-value difference is within floating-point noise to avoid cycling
+        # on Laplace-smoothed rows where both actions are near-identical.
         Q = R + gamma * np.einsum("san,n->sa", T, V_new)
-        new_policy = Q.argmax(axis=1).astype(int)
+        best = Q.argmax(axis=1).astype(int)
+        q_gap = Q[np.arange(len(policy)), best] - Q[np.arange(len(policy)), policy]
+        new_policy = np.where(q_gap > inner_delta, best, policy)
 
         policy_changes = int((new_policy != policy).sum())
         dv = float(np.abs(V_new - V).max())
@@ -95,7 +105,7 @@ def run_pi(
             }
         )
 
-        v_converged = dv < delta
+        v_converged = dv < inner_delta
         if logger and it % log_every == 0:
             logger.info(
                 "  PI iter %d/%d: delta_v=%.2e (target %.2e), policy_changes=%d, elapsed=%.1fs",
@@ -118,7 +128,7 @@ def run_pi(
                     "but policy_changes=%d — full policy convergence not reached",
                     it,
                     dv,
-                    delta,
+                    inner_delta,
                     policy_changes,
                 )
             break
