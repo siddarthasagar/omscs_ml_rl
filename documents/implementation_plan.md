@@ -10,10 +10,28 @@ All phases implemented or refactored from this point forward follow the artifact
 
 - `run()` writes all required artifacts for the phase
 - `visualize(checkpoint_path)` reloads only those artifacts from disk and renders figures
+- phase modules keep `visualize(checkpoint_path)` as their rendering contract, but rendering is preferably orchestrated by a standalone script rather than inlined into the long-running compute path
 - downstream phases consume only declared upstream artifact inputs
 - a phase may have zero upstream phase dependencies if it is logically self-contained
 
 This is the target design for the Phase 1–3 refactor and the expected template for Phases 4+.
+
+## Visualization Orchestration
+
+The preferred rendering flow is now decoupled from experiment execution.
+
+- `scripts/visualize_all.py` is the standalone renderer.
+- With no phase filter, it rerenders every phase whose checkpoint already exists.
+- With a phase filter such as `--phase phase3`, it rerenders one phase only.
+- `make viz` remains the full-project rerender command and can wipe `artifacts/figures/` before rebuilding figures.
+
+Why this is the cleaner default:
+
+- it isolates render logs from long-running experiment logs,
+- it allows figure fixes without rerunning expensive experiments,
+- it gives one reusable orchestration path for both single-phase and all-phase rendering.
+
+If a phase run wants immediate figure output after compute completes, it should invoke the standalone renderer for its own phase as a separate process rather than mixing plotting into the main experiment path.
 
 ## Plot Palette Contract
 
@@ -142,10 +160,9 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 - Evaluate greedy policy over 5 seeds × 1000 episodes each; report mean return ± IQR
 
 **Figures → `artifacts/figures/phase2_vi_pi_blackjack/`:**
-- `blackjack_vi_convergence.png` — ΔV vs iteration (single planning trace)
-- `blackjack_pi_convergence.png` — ΔV + policy-change count vs iteration (single trace)
-- `blackjack_vi_policy_heatmap.png` — optimal action over (player sum × dealer card), usable ace / no ace panels
-- `blackjack_vi_value_heatmap.png` — V(s) heatmap
+- `blackjack_convergence.png` — 2-panel composite: VI ΔV vs iteration (left) + PI policy-change bars vs iteration (right)
+- `blackjack_policy_heatmap.png` — shared optimal policy titled "Optimal Policy — Blackjack (VI = PI)", hard hands / soft hands panels
+- `blackjack_value_surface_3d.png` — 3D VI value surface; supplementary only (not emitted by default)
 
 **Metrics → `artifacts/metrics/phase2_vi_pi_blackjack/`:**
 - `vi_convergence.csv` — iteration, delta_v, wall_clock_s
@@ -407,10 +424,9 @@ Regime assignment is fixed and must not be mixed across charts:
 ## Figures Checklist
 
 ### Blackjack:
-- [ ] VI: ΔV vs iteration (single planning trace)
-- [ ] PI: ΔV + policy-change count vs iteration (single trace)
-- [ ] Optimal policy heatmap (usable ace / no ace panels)
-- [ ] Value function heatmap
+- [x] VI + PI convergence composite (`blackjack_convergence.png`)
+- [x] Shared optimal policy heatmap (`blackjack_policy_heatmap.png`)
+- [ ] Value surface supplementary (`blackjack_value_surface_3d.png`) — optional, emit with `supplementary=True`
 - [ ] SARSA: mean return ± IQR vs episodes (5 seeds)
 - [ ] Q-Learning: mean return ± IQR vs episodes (5 seeds)
 - [ ] SARSA vs Q-Learning — controlled (shared exploration schedule)
@@ -418,12 +434,12 @@ Regime assignment is fixed and must not be mixed across charts:
 - [ ] Hyperparameter sensitivity
 
 ### CartPole:
-- [ ] VI convergence: representative ΔV vs iteration curve with note that all grids overlap and share the same 1376-sweep convergence
-- [ ] PI convergence: policy changes vs iteration per grid with stable-iteration markers
-- [ ] Mean episode length by grid: grouped bar chart (VI vs PI)
-- [ ] Planning wall-clock by grid: grouped bar chart (VI vs PI)
-- [ ] Model coverage by grid: single bar chart with the standard coarse/default/fine grid palette
-- [ ] Policy slice (optional): qualitative VI vs PI state-space view
+- [x] VI convergence: representative ΔV vs iteration curve with note that all grids overlap and share the same 1376-sweep convergence
+- [x] PI convergence: policy changes vs iteration per grid with stable-iteration markers
+- [x] Mean episode length by grid: grouped bar chart (VI vs PI)
+- [x] Planning wall-clock by grid: grouped bar chart (VI vs PI)
+- [x] Model coverage by grid: single bar chart with the standard coarse/default/fine grid palette
+- [x] Policy slice (optional): qualitative VI vs PI state-space view
 - [ ] SARSA: episode length mean ± IQR vs episodes
 - [ ] Q-Learning: episode length mean ± IQR vs episodes
 - [ ] SARSA vs Q-Learning — controlled (shared exploration schedule)

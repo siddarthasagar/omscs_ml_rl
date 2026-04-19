@@ -34,7 +34,15 @@ All phases implemented or refactored going forward should expose the same lightw
 - `run() -> Path`: compute results, write artifacts, and return the checkpoint JSON path
 - `visualize(checkpoint_path: Path) -> list[Path]`: reload artifacts from disk only and render all figures for that phase
 
-`__main__` may call `run()` followed immediately by `visualize(checkpoint_path)`, but `visualize()` must not consume runtime objects returned from `run()`.
+Preferred orchestration is decoupled:
+
+- phase `__main__` entrypoints should focus on computation and artifact writing,
+- the standalone renderer `scripts/visualize_all.py` should load saved checkpoints and call `visualize(checkpoint_path)` in a fresh process,
+- `scripts/visualize_all.py --phase phase3` is the target single-phase rerender interface,
+- running the renderer without a phase filter should rerender every phase whose checkpoint exists,
+- `make viz` is the repository-wide rerender command and may clear `artifacts/figures/` first.
+
+This avoids log leakage between long-running experiments and figure generation, while preserving the per-phase `visualize()` contract. A phase may still call `visualize()` inline during migration or local debugging, but that is no longer the preferred default.
 
 This is a function contract, not a requirement for a heavy class hierarchy.
 
@@ -193,6 +201,14 @@ make dev                                    # venv + all deps (incl. dev)
 make test                                   # full pytest
 make lint / make format                     # ruff
 uv run python scripts/run_phase_{N}_{slug}.py   # phase entrypoints
+uv run python scripts/visualize_all.py          # standalone rerender of all available phases
 bash ml_run.sh "make <target>"             # with sleep prevention (inline)
 bash ml_run.sh --detach "make <target>"    # background tmux/screen session
+make viz                                    # wipe figures and rerender all available phases
+```
+
+Target filtered visualization interface:
+
+```
+uv run python scripts/visualize_all.py --phase phase3
 ```

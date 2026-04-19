@@ -21,6 +21,7 @@ omscs_ml_rl/
 │       └── plotting.py                # All plot_* functions
 ├── scripts/
 │   ├── run_phase_{N}_{slug}.py        # One script per phase
+│   ├── visualize_all.py               # Standalone figure renderer; supports all-phase or filtered rerenders
 │   └── run_phase_8_report_tables.py     # Generates LaTeX tables, report_numbers.tex, and repro artifacts
 ├── tests/
 └── artifacts/                         # git-ignored runtime outputs
@@ -47,13 +48,21 @@ A phase may have **no upstream phase dependency** if it is self-contained (for e
 
 This enables human evaluation at each gate: review the checkpoint JSON, metrics, and figures before running the next dependent phase. Nothing downstream should rely on implicit runtime coupling.
 
-### 2. Two-step lifecycle: `run()` then `visualize()`
+### 2. Two-step lifecycle with standalone rendering
 
 Preferred go-forward contract for every phase module:
 - `run() -> Path`: execute computation, write all required artifacts, and return the checkpoint path
 - `visualize(checkpoint_path: Path) -> list[Path]`: reload artifacts from disk only and render the phase figures
 
-`__main__` may call `run()` and then immediately call `visualize()`, but `visualize()` must reopen files from disk rather than reuse arrays, policies, or traces still alive in the Python process. This keeps experiment execution and visualization tightly coupled through an explicit artifact contract instead of shared memory.
+Preferred orchestration:
+
+- phase entrypoints compute artifacts first and do not need to inline matplotlib rendering,
+- `scripts/visualize_all.py` is the standalone renderer that reloads checkpoints and dispatches phase `visualize()` functions in a fresh process,
+- an optional phase filter such as `--phase phase3` should rerender one phase only,
+- no filter should rerender all phases whose checkpoints already exist,
+- `make viz` remains the repo-level full rerender target and may wipe `artifacts/figures/` first.
+
+This keeps experiment execution and visualization coupled through explicit artifact contracts, while isolating logs and avoiding long experiment runs being cluttered by rendering output. A phase script may still call `visualize()` inline for local debugging, but the preferred default is compute-only phase entrypoints plus standalone rendering.
 
 ### 3. Artifact categories and boundaries
 

@@ -4,26 +4,20 @@ Skips phases whose checkpoint does not yet exist — safe to run at any point
 in the pipeline. Only phases that have been computed are rendered.
 
 Usage:
-    uv run python scripts/visualize_all.py
-    make viz                                  # also wipes artifacts/figures first
+    uv run python scripts/visualize_all.py              # all available phases
+    uv run python scripts/visualize_all.py phase3       # single phase only
+    make viz                                            # also wipes artifacts/figures first
 """
 
 import importlib.util
+import sys
 from pathlib import Path
 
 # Registry — extend with each new phase as it is implemented.
 # (phase_id, checkpoint_path, script_file)
 _REGISTRY: list[tuple[str, str, str]] = [
-    (
-        "phase2",
-        "artifacts/metadata/phase2.json",
-        "scripts/run_phase_2_vi_pi_blackjack.py",
-    ),
-    (
-        "phase3",
-        "artifacts/metadata/phase3.json",
-        "scripts/run_phase_3_vi_pi_cartpole.py",
-    ),
+    ("phase2", "artifacts/metadata/phase2.json", "scripts/run_phase_2_vi_pi_blackjack.py"),
+    ("phase3", "artifacts/metadata/phase3.json", "scripts/run_phase_3_vi_pi_cartpole.py"),
 ]
 
 
@@ -37,10 +31,17 @@ def _load_script(script_path: str):
 
 
 def main() -> None:
+    phase_filter = sys.argv[1] if len(sys.argv) > 1 else None
+    registry = [r for r in _REGISTRY if phase_filter is None or r[0] == phase_filter]
+
+    if phase_filter and not registry:
+        print(f"ERROR: '{phase_filter}' not found in registry. Known phases: {[r[0] for r in _REGISTRY]}")
+        sys.exit(1)
+
     rendered: list[str] = []
     skipped: list[str] = []
 
-    for phase_id, checkpoint_str, script_file in _REGISTRY:
+    for phase_id, checkpoint_str, script_file in registry:
         checkpoint = Path(checkpoint_str)
         if not checkpoint.exists():
             print(f"  skip  {phase_id} — checkpoint not found ({checkpoint})")
