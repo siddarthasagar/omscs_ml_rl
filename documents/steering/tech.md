@@ -25,7 +25,7 @@ Seed semantics differ by method type:
 - **VI / PI:** planning is deterministic on a fixed T/R model — one planning run. Seeds apply only to **policy evaluation** rollouts (5 × N episodes against the greedy policy).
 - **SARSA / Q-Learning:** full training is stochastic — 5 seeds vary the entire training loop.
 
-No single-seed results submitted. All reported performance metrics are mean ± IQR across the 5 seeds.
+No single-seed results submitted. Report-facing aggregate statistics use the documented variability convention for the relevant output type, always over the 5 seeds.
 
 ## Preferred Phase Lifecycle (go-forward contract)
 
@@ -43,6 +43,12 @@ Preferred orchestration is decoupled:
 - `make viz` is the repository-wide rerender command and may clear `artifacts/figures/` first.
 
 This avoids log leakage between long-running experiments and figure generation, while preserving the per-phase `visualize()` contract. A phase may still call `visualize()` inline during migration or local debugging, but that is no longer the preferred default.
+
+The same isolation principle applies to experimentation vs validation runs:
+
+- canonical phase logs under `artifacts/logs/phase{N}.log` are for real workspace experiment runs,
+- temporary tests, smoke runs, and debug runs should write to isolated artifact locations or use distinct run IDs,
+- test/debug artifacts must never be allowed to look like the authoritative output of a completed project phase.
 
 This is a function contract, not a requirement for a heavy class hierarchy.
 

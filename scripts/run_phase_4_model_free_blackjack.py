@@ -452,11 +452,11 @@ def run() -> Path:
     global _logger
     from src.utils.logger import configure_logger
 
-    _logger = configure_logger("phase4")
-    log = _logger
-
     paths = resolve_phase_paths(_PHASE_ID, _SLUG)
     paths.makedirs()
+
+    _logger = configure_logger("phase4", log_dir=paths.logs_dir)
+    log = _logger
 
     # ── HP Search (serial, multi-seed scoring) ────────────────────────────────
     log.info("=== Phase 4 HP Search (multi-seed scoring over %d seeds) ===", len(SEEDS))

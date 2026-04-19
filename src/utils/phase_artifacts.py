@@ -29,6 +29,7 @@ class PhasePaths:
     metrics_dir: Path
     figures_dir: Path
     metadata_dir: Path
+    logs_dir: Path | None = None  # if None, configure_logger uses its own default
 
     @property
     def checkpoint_path(self) -> Path:
@@ -39,15 +40,17 @@ class PhasePaths:
         return f"{self.phase_id}_{self.slug}"
 
     def makedirs(self) -> None:
-        """Create metrics, figures, and metadata directories."""
+        """Create metrics, figures, metadata, and (if set) logs directories."""
         self.metrics_dir.mkdir(parents=True, exist_ok=True)
         self.figures_dir.mkdir(parents=True, exist_ok=True)
         self.metadata_dir.mkdir(parents=True, exist_ok=True)
+        if self.logs_dir is not None:
+            self.logs_dir.mkdir(parents=True, exist_ok=True)
 
 
 def resolve_phase_paths(phase_id: str, slug: str) -> PhasePaths:
     """Return PhasePaths built from config path constants."""
-    from src.config import FIGURES_DIR, METADATA_DIR, METRICS_DIR
+    from src.config import FIGURES_DIR, LOGS_DIR, METADATA_DIR, METRICS_DIR
 
     phase_dir = f"{phase_id}_{slug}"
     return PhasePaths(
@@ -56,6 +59,7 @@ def resolve_phase_paths(phase_id: str, slug: str) -> PhasePaths:
         metrics_dir=METRICS_DIR / phase_dir,
         figures_dir=FIGURES_DIR / phase_dir,
         metadata_dir=METADATA_DIR,
+        logs_dir=LOGS_DIR,
     )
 
 

@@ -95,6 +95,12 @@ Every phase script calls `configure_logger(run_id)` from `src/utils/logger.py`.
 - Writes to `artifacts/logs/{run_id}.log` **and** stdout simultaneously
 - No bare `print()` in phase scripts (tqdm progress bars are exempt)
 
+Logging isolation is a universal project rule:
+- Canonical phase logs such as `artifacts/logs/phase5.log` are reserved for real workspace experiment runs only.
+- Tests, smoke runs, temporary-budget validations, and debug runs must not overwrite or interleave with canonical experiment logs.
+- Non-canonical runs should use an isolated artifact root, temporary workspace, or distinct `run_id` so their logs remain separate from report-facing experiment evidence.
+- The same separation rule applies to metrics, figures, and checkpoint JSONs: test/debug artifacts must not be mistaken for final phase outputs.
+
 ## Naming Conventions
 
 - Phase scripts: `run_phase_{N}_{slug}.py`

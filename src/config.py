@@ -266,6 +266,7 @@ CP_BASELINE_GAMMA: float = 0.99
 CP_DISC_TRAIN_EPISODES: int = CP_TRAIN_EPISODES
 
 PHASE5_FINAL_TRAIN_MAX_WORKERS: int | None = None
+PHASE5_HP_SEARCH_MAX_WORKERS: int | None = None
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATA_DIR: Path = Path("data")

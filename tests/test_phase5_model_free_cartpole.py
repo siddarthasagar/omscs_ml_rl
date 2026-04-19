@@ -252,6 +252,7 @@ def test_run_lifecycle(tmp_path, monkeypatch):
         "CP_EVAL_EPISODES_HP": 20,
         "SEEDS": [42, 43],
         "PHASE5_FINAL_TRAIN_MAX_WORKERS": 1,
+        "PHASE5_HP_SEARCH_MAX_WORKERS": 1,
         # Only run one grid to keep the test fast
         "CARTPOLE_GRID_NAMES": ["default"],
     }
@@ -266,6 +267,7 @@ def test_run_lifecycle(tmp_path, monkeypatch):
         metrics_dir=tmp_path / "metrics",
         figures_dir=tmp_path / "figures",
         metadata_dir=tmp_path / "metadata",
+        logs_dir=Path("tmp") / "smoke_logs",
     )
     fake_paths.makedirs()
 

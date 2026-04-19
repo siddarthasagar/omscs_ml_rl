@@ -85,6 +85,8 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 
 **Model-free convergence rule:** `convergence_episode` = first episode E where `|mean_return(E-W:E) − mean_return(E-2W:E-W)| < RL_CONVERGENCE_DELTA` for `RL_CONVERGENCE_M` consecutive window-pairs. Constants in `config.py`: `W=100`, `RL_CONVERGENCE_DELTA=0.01`, `RL_CONVERGENCE_M=3`. Applied per-seed; `convergence_episode_iqr` is the IQR of per-seed convergence episodes across the 5 seeds.
 
+**Artifact/log isolation rule:** canonical phase artifacts under `artifacts/{logs,metrics,figures,metadata}/` are reserved for real workspace experiment runs. Smoke tests, pytest lifecycle tests, temporary-budget validations, and debug runs should write to isolated temporary locations or use distinct run identifiers so they cannot be confused with final experiment evidence.
+
 ---
 
 ## Phase Breakdown

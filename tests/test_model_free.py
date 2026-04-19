@@ -380,6 +380,7 @@ def test_run_lifecycle(tmp_path, monkeypatch):
         metrics_dir=tmp_path / "metrics",
         figures_dir=tmp_path / "figures",
         metadata_dir=tmp_path / "metadata",
+        logs_dir=Path("tmp") / "smoke_logs",
     )
     fake_paths.makedirs()
 

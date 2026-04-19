@@ -5,6 +5,8 @@ Lifecycle:
     visualize(path)     → reload from disk only, render all figures
 
 HP search: 3-stage progressive narrowing, each stage scored over all SEEDS.
+  Configs within each stage run in parallel via ProcessPoolExecutor; stages
+  remain sequential (Stage 2 promotes from Stage 1, Stage 3 perturbs Stage 2).
 Final training: parallel via ProcessPoolExecutor, two regimes per algorithm.
   - controlled: both algorithms use the same fixed baseline schedule (fair comparison).
   - tuned:      each algorithm uses its own HP-search winner.
@@ -62,6 +64,7 @@ from src.config import (
     CP_N_ACTIONS,
     CP_TRAIN_EPISODES,
     PHASE5_FINAL_TRAIN_MAX_WORKERS,
+    PHASE5_HP_SEARCH_MAX_WORKERS,
     RL_CONVERGENCE_DELTA,
     RL_CONVERGENCE_M,
     RL_CONVERGENCE_WINDOW,
@@ -345,6 +348,66 @@ def _make_random_hp_configs(n: int, rng_seed: int) -> list[dict]:
     ]
 
 
+def _run_hp_config_job(job: dict) -> dict:
+    """Top-level worker: train+eval one HP config across all seeds.
+
+    Must be a top-level function (not nested/lambda) for ProcessPoolExecutor
+    pickling. Does not call _get_logger() — logging happens in the caller.
+    """
+    algo_label: str = job["algo_label"]
+    hp: dict = job["hp"]
+    config_index: int = job["config_index"]
+    n_episodes: int = job["n_episodes"]
+    grid_config: dict | None = job["grid_config"]
+    seeds: list[int] = job["seeds"]
+
+    discretizer = CartPoleDiscretizer(grid_config)
+    seed_lens: list[float] = []
+    for seed in seeds:
+        train_seed = seed + config_index * _HP_SEED_CONFIG_STRIDE
+        env = _CartPoleDiscreteWrapper(discretizer)
+        cfg = _build_mf_config(algo_label, hp)
+        if algo_label == "sarsa":
+            Q, _ = run_sarsa(
+                env,
+                cfg,
+                discretizer.n_states,
+                CP_N_ACTIONS,
+                n_episodes,
+                seed=train_seed,
+                log_interval=n_episodes + 1,
+            )
+        else:
+            Q, _ = run_q_learning(
+                env,
+                cfg,
+                discretizer.n_states,
+                CP_N_ACTIONS,
+                n_episodes,
+                seed=train_seed,
+                log_interval=n_episodes + 1,
+            )
+        env.close()
+        eval_stats = _eval_cp_policy(
+            Q,
+            discretizer,
+            CP_EVAL_EPISODES_HP,
+            seed=train_seed + _HP_EVAL_SEED_OFFSET,
+        )
+        seed_lens.append(eval_stats["mean_episode_len"])
+
+    mean_len = float(np.mean(seed_lens))
+    std_len = float(np.std(seed_lens))
+    return {
+        "config_index": config_index,
+        "algorithm": algo_label,
+        "stage": job["stage"],
+        **hp,
+        "mean_episode_len": mean_len,
+        "mean_episode_len_std": std_len,
+    }
+
+
 def _run_hp_stage(
     algo_label: str,
     hp_configs: list[dict],
@@ -355,70 +418,64 @@ def _run_hp_stage(
 ) -> list[dict]:
     """Run one HP search stage; scores each config over all SEEDS.
 
+    Configs are evaluated in parallel via ProcessPoolExecutor (PHASE5_HP_SEARCH_MAX_WORKERS).
+    Stages themselves remain sequential: Stage 2 promotes from Stage 1, Stage 3 from Stage 2.
     Promotion criterion: mean_episode_len (higher is better).
     """
     log = _get_logger()
-    discretizer = CartPoleDiscretizer(grid_config)
-    rows: list[dict] = []
-
-    for i, hp in enumerate(hp_configs):
-        seed_lens: list[float] = []
-        for seed in SEEDS:
-            train_seed = seed + i * _HP_SEED_CONFIG_STRIDE
-            env = _CartPoleDiscreteWrapper(discretizer)
-            cfg = _build_mf_config(algo_label, hp)
-            if algo_label == "sarsa":
-                Q, _ = run_sarsa(
-                    env,
-                    cfg,
-                    discretizer.n_states,
-                    CP_N_ACTIONS,
-                    n_episodes,
-                    seed=train_seed,
-                    log_interval=n_episodes + 1,
-                )
-            else:
-                Q, _ = run_q_learning(
-                    env,
-                    cfg,
-                    discretizer.n_states,
-                    CP_N_ACTIONS,
-                    n_episodes,
-                    seed=train_seed,
-                    log_interval=n_episodes + 1,
-                )
-            env.close()
-            eval_stats = _eval_cp_policy(
-                Q,
-                discretizer,
-                CP_EVAL_EPISODES_HP,
-                seed=train_seed + _HP_EVAL_SEED_OFFSET,
-            )
-            seed_lens.append(eval_stats["mean_episode_len"])
-
-        mean_len = float(np.mean(seed_lens))
-        std_len = float(np.std(seed_lens))
-        row = {
-            "algorithm": algo_label,
+    jobs = [
+        {
+            "algo_label": algo_label,
+            "hp": hp,
+            "config_index": i,
+            "n_episodes": n_episodes,
             "stage": stage,
-            **hp,
-            "mean_episode_len": mean_len,
-            "mean_episode_len_std": std_len,
+            "grid_config": grid_config,
+            "seeds": list(SEEDS),
         }
-        rows.append(row)
+        for i, hp in enumerate(hp_configs)
+    ]
+
+    total = len(jobs)
+    done = 0
+
+    def _log_result(r: dict) -> None:
+        nonlocal done
+        done += 1
         if log:
+            hp = hp_configs[r["config_index"]]
             log.info(
-                "  [%s] stage%d cfg%d: α=%.2f→%.3f eps_decay=%d  len=%.1f±%.1f",
+                "  [%s] stage%d cfg%d: α=%.2f→%.3f eps_decay=%d  len=%.1f±%.1f  [%d/%d]",
                 algo_label,
                 stage,
-                i,
+                r["config_index"],
                 hp["alpha_start"],
                 hp["alpha_end"],
                 hp["eps_decay_steps"],
-                mean_len,
-                std_len,
+                r["mean_episode_len"],
+                r["mean_episode_len_std"],
+                done,
+                total,
             )
-    return rows
+
+    n_workers = PHASE5_HP_SEARCH_MAX_WORKERS
+    results: list[dict] = []
+    if n_workers == 1 or len(jobs) == 1:
+        for job in jobs:
+            r = _run_hp_config_job(job)
+            _log_result(r)
+            results.append(r)
+    else:
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            futures = {pool.submit(_run_hp_config_job, job): job for job in jobs}
+            for fut in as_completed(futures):
+                r = fut.result()
+                _log_result(r)  # logs as each config finishes (completion order)
+                results.append(r)
+
+    # Sort rows by config_index for deterministic CSV output.
+    results.sort(key=lambda r: r["config_index"])
+    return results
 
 
 def _hp_search(
@@ -530,11 +587,11 @@ def run() -> Path:
     global _logger
     from src.utils.logger import configure_logger
 
-    _logger = configure_logger("phase5")
-    log = _logger
-
     paths = resolve_phase_paths(_PHASE_ID, _SLUG)
     paths.makedirs()
+
+    _logger = configure_logger("phase5", log_dir=paths.logs_dir)
+    log = _logger
 
     # Default grid config (None → CartPoleDiscretizer uses CARTPOLE_* defaults)
     default_grid_config = None
