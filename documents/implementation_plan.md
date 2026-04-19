@@ -262,14 +262,14 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 - Primary x-axis: **episodes**. Cumulative steps logged.
 
 **Figures → `artifacts/figures/phase5_model_free_cartpole/`:**
-- `cartpole_mf_learning_curves.png` — mean episode length ± IQR vs episodes, two subplots (controlled | tuned)
+- `cartpole_mf_learning_curves.png` — mean episode length ± std band vs episodes, two subplots (controlled | tuned)
 - `cartpole_mf_comparison.png` — SARSA vs Q-Learning bar comparison, two subplots (controlled | tuned)
 - `cartpole_mf_hp_sensitivity.png` — mean final episode length vs α_start, coloured by ε_decay_steps
 - `cartpole_mf_discretization.png` — grid vs final mean episode length (tuned regime only)
 
 **Metrics → `artifacts/metrics/phase5_model_free_cartpole/`:**
 - `mf_learning_curves.csv` — algorithm, seed, regime, episode, window_mean
-- `mf_hp_search.csv` — algorithm, stage, alpha_start, alpha_end, alpha_decay_steps, eps_decay_steps, gamma, mean_return, mean_return_std
+- `mf_hp_search.csv` — algorithm, stage, alpha_start, alpha_end, alpha_decay_steps, eps_decay_steps, gamma, mean_episode_len, mean_episode_len_std
 - `mf_eval_per_seed.csv` — algorithm, seed, regime, mean_episode_len, final_window_return, convergence_episode, train_wall_clock_s
 - `mf_eval_summary.csv` — algorithm, regime, metric, mean, std, iqr (long-format)
 - `mf_discretization.csv` — grid, algorithm, seed, final_mean_len, convergence_episode (`regime` always `tuned`)
