@@ -127,13 +127,14 @@ Applied example for DP phases:
 ## Reporting Conventions
 
 **Output schema — model-free phases:**
-- `*_curves.csv` — per-seed, per-episode rows with a `regime` column (`controlled` or `tuned`)
-- `summary_per_seed.csv` — one row per (regime, algorithm, seed)
-- `summary_aggregate.csv` — one row per (regime, algorithm); includes stability metrics
+- `mf_learning_curves.csv` — algorithm, seed, regime, episode, window_mean (one row per window checkpoint per seed)
+- `mf_hp_search.csv` — per-config HP search results; ranked by `mean_return` (= win_rate − loss_rate for Blackjack)
+- `mf_eval_per_seed.csv` — one row per (algorithm, seed, regime); includes mean_return, final_window_return, convergence_episode
+- `mf_eval_summary.csv` — long-format aggregate: one row per (algorithm, regime, metric) with mean/std/iqr columns
 
 **Stability metrics (model-free only):**
-- `final_window_iqr` — IQR of mean return/episode-length over the last 10% of episodes, across 5 seeds
-- `convergence_episode_iqr` — IQR of `convergence_episode` across 5 seeds
+- `final_window_iqr` — IQR of `final_window_return` (last window-mean from training curve) across 5 seeds; stored in `phase{N}.json` checkpoint summary per (regime, algorithm)
+- `convergence_episode_iqr` — IQR of `convergence_episode` across 5 seeds; stored in `phase{N}.json` checkpoint summary
 
 **Model-free convergence rule (`convergence_episode`):**
 Running-mean plateau: first episode E where `|mean_return(E-W:E) − mean_return(E-2W:E-W)| < RL_CONVERGENCE_DELTA` for `RL_CONVERGENCE_M` consecutive window-pairs.

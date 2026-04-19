@@ -16,8 +16,21 @@ from pathlib import Path
 # Registry — extend with each new phase as it is implemented.
 # (phase_id, checkpoint_path, script_file)
 _REGISTRY: list[tuple[str, str, str]] = [
-    ("phase2", "artifacts/metadata/phase2.json", "scripts/run_phase_2_vi_pi_blackjack.py"),
-    ("phase3", "artifacts/metadata/phase3.json", "scripts/run_phase_3_vi_pi_cartpole.py"),
+    (
+        "phase2",
+        "artifacts/metadata/phase2.json",
+        "scripts/run_phase_2_vi_pi_blackjack.py",
+    ),
+    (
+        "phase3",
+        "artifacts/metadata/phase3.json",
+        "scripts/run_phase_3_vi_pi_cartpole.py",
+    ),
+    (
+        "phase4",
+        "artifacts/metadata/phase4.json",
+        "scripts/run_phase_4_model_free_blackjack.py",
+    ),
 ]
 
 
@@ -35,7 +48,9 @@ def main() -> None:
     registry = [r for r in _REGISTRY if phase_filter is None or r[0] == phase_filter]
 
     if phase_filter and not registry:
-        print(f"ERROR: '{phase_filter}' not found in registry. Known phases: {[r[0] for r in _REGISTRY]}")
+        print(
+            f"ERROR: '{phase_filter}' not found in registry. Known phases: {[r[0] for r in _REGISTRY]}"
+        )
         sys.exit(1)
 
     rendered: list[str] = []

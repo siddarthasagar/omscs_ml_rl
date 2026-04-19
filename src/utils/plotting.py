@@ -743,3 +743,229 @@ def plot_cp_policy_slice(
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+# ── Phase 4 — Model-Free (SARSA / Q-Learning) ─────────────────────────────────
+
+# Algorithm colors for model-free methods — distinct from VI/PI ALGO_COLORS.
+MF_ALGO_COLORS: dict[str, str] = {
+    "sarsa": "#E377C2",  # pink
+    "qlearning": "#17BECF",  # cyan
+}
+
+
+def plot_mf_learning_curve(
+    metrics_dir: Path,
+    fig_dir: Path,
+) -> Path:
+    """Learning curves for SARSA and Q-Learning, split by regime.
+
+    Reads ``mf_learning_curves.csv``
+    (columns: algorithm, seed, regime, episode, window_mean).
+
+    Two subplots side-by-side: controlled (left) and tuned (right).
+    Within each subplot, one curve per algorithm with ±1 std band over seeds.
+    Line color = MF_ALGO_COLORS; data is already window-smoothed.
+
+    Args:
+        metrics_dir: Directory containing mf_learning_curves.csv.
+        fig_dir:     Output directory.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "mf_learning_curves.csv")
+    regimes = ["controlled", "tuned"]
+    # Gracefully handle single-regime CSVs (e.g. from smoke tests)
+    if "regime" not in df.columns:
+        df["regime"] = "tuned"
+    available_regimes = [r for r in regimes if r in df["regime"].unique()]
+
+    fig, axes = plt.subplots(
+        1, len(available_regimes), figsize=(7 * len(available_regimes), 5), sharey=True
+    )
+    if len(available_regimes) == 1:
+        axes = [axes]
+
+    for ax, regime in zip(axes, available_regimes):
+        regime_df = df[df["regime"] == regime]
+        for algo in ["sarsa", "qlearning"]:
+            sub = regime_df[regime_df["algorithm"] == algo]
+            if sub.empty:
+                continue
+            grouped = (
+                sub.groupby("episode")["window_mean"].agg(["mean", "std"]).reset_index()
+            )
+            color = MF_ALGO_COLORS[algo]
+            label = "SARSA" if algo == "sarsa" else "Q-Learning"
+            ax.plot(
+                grouped["episode"],
+                grouped["mean"],
+                label=label,
+                color=color,
+                linewidth=1.5,
+            )
+            ax.fill_between(
+                grouped["episode"],
+                grouped["mean"] - grouped["std"].fillna(0),
+                grouped["mean"] + grouped["std"].fillna(0),
+                alpha=0.15,
+                color=color,
+            )
+        ax.set_xlabel("Episode")
+        ax.set_title(f"{regime.capitalize()} schedule", fontweight="bold")
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+
+    axes[0].set_ylabel("Window-mean return (100-ep window)")
+    fig.suptitle(
+        "Blackjack Learning Curves — SARSA vs Q-Learning",
+        fontsize=12,
+        fontweight="bold",
+    )
+    plt.tight_layout()
+    out = fig_dir / "blackjack_mf_learning_curves.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_mf_comparison(
+    metrics_dir: Path,
+    fig_dir: Path,
+) -> Path:
+    """Grouped bar chart: final win-rate comparison, controlled vs tuned.
+
+    Reads ``mf_eval_summary.csv``
+    (columns: algorithm, regime, metric, mean, std, iqr).
+
+    Two subplots: controlled (left) and tuned (right).  Within each subplot,
+    grouped bars for SARSA and Q-Learning across win/draw/loss rates.
+    Error bars show std across seeds; IQR shown as secondary annotation.
+
+    Args:
+        metrics_dir: Directory containing mf_eval_summary.csv.
+        fig_dir:     Output directory.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "mf_eval_summary.csv")
+    if "regime" not in df.columns:
+        df["regime"] = "tuned"
+    available_regimes = [
+        r for r in ["controlled", "tuned"] if r in df["regime"].unique()
+    ]
+
+    metrics = ["win_rate", "draw_rate", "loss_rate"]
+    labels = ["Win", "Draw", "Loss"]
+    x = np.arange(len(metrics))
+    width = 0.35
+
+    fig, axes = plt.subplots(
+        1, len(available_regimes), figsize=(7 * len(available_regimes), 5), sharey=True
+    )
+    if len(available_regimes) == 1:
+        axes = [axes]
+
+    for ax, regime in zip(axes, available_regimes):
+        regime_df = df[df["regime"] == regime]
+        for offset, algo, display in zip(
+            [-width / 2, width / 2],
+            ["sarsa", "qlearning"],
+            ["SARSA", "Q-Learning"],
+        ):
+            sub = regime_df[regime_df["algorithm"] == algo].set_index("metric")
+            if sub.empty:
+                continue
+            means = [float(sub.loc[m, "mean"]) for m in metrics]
+            stds = [float(sub.loc[m, "std"]) for m in metrics]
+            ax.bar(
+                x + offset,
+                means,
+                width,
+                yerr=stds,
+                label=display,
+                color=MF_ALGO_COLORS[algo],
+                alpha=0.85,
+                capsize=4,
+                error_kw={"elinewidth": 1.2},
+            )
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels)
+        ax.set_xlabel("Outcome")
+        ax.set_title(f"{regime.capitalize()} schedule", fontweight="bold")
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3, axis="y")
+
+    axes[0].set_ylabel("Rate")
+    fig.suptitle(
+        "Blackjack Final Eval — SARSA vs Q-Learning", fontsize=12, fontweight="bold"
+    )
+    plt.tight_layout()
+    out = fig_dir / "blackjack_mf_comparison.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_mf_hp_sensitivity(
+    metrics_dir: Path,
+    fig_dir: Path,
+) -> Path:
+    """HP sensitivity scatter: mean_return vs α_start, coloured by ε_decay_steps.
+
+    Reads ``mf_hp_search.csv``
+    (columns: algorithm, alpha_start, eps_decay_steps, mean_return).
+
+    Args:
+        metrics_dir: Directory containing mf_hp_search.csv.
+        fig_dir:     Output directory.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "mf_hp_search.csv")
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+
+    for ax, algo, display in zip(
+        axes,
+        ["sarsa", "qlearning"],
+        ["SARSA", "Q-Learning"],
+    ):
+        sub = df[df["algorithm"] == algo]
+        sc = ax.scatter(
+            sub["alpha_start"],
+            sub["mean_return"],
+            c=sub["eps_decay_steps"],
+            cmap="viridis",
+            alpha=0.8,
+            edgecolors="white",
+            linewidths=0.4,
+            s=60,
+        )
+        ax.set_xlabel("α start")
+        ax.set_title(display, fontweight="bold")
+        ax.grid(True, alpha=0.3)
+
+    axes[0].set_ylabel("Mean return (win rate − loss rate)")
+    cbar = fig.colorbar(sc, ax=axes.tolist(), shrink=0.8)
+    cbar.set_label("ε decay steps")
+    fig.suptitle(
+        "HP Sensitivity — Blackjack Model-Free", fontsize=12, fontweight="bold"
+    )
+    plt.tight_layout()
+    out = fig_dir / "blackjack_mf_hp_sensitivity.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out

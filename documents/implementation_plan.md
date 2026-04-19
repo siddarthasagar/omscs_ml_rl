@@ -230,21 +230,20 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 - Primary learning curve x-axis: **episodes**. Cumulative steps also logged in CSV.
 
 **Figures → `artifacts/figures/phase4_model_free_blackjack/`:**
-- `blackjack_sarsa_learning_curve.png` — mean return ± IQR vs episodes (5 seeds, own schedule)
-- `blackjack_qlearning_learning_curve.png` — same
-- `blackjack_sarsa_vs_qlearning_controlled.png` — overlay under shared exploration schedule
-- `blackjack_sarsa_vs_qlearning_tuned.png` — overlay under per-algorithm tuned schedule
-- `blackjack_hyperparam_sensitivity.png` — metric vs α / ε-decay, top configs
+- `blackjack_mf_learning_curves.png` — mean return ± IQR vs episodes, two subplots (controlled | tuned)
+- `blackjack_mf_comparison.png` — SARSA vs Q-Learning bar comparison, two subplots (controlled | tuned)
+- `blackjack_mf_hp_sensitivity.png` — mean return vs α_start, coloured by ε_decay_steps
 
 **Metrics → `artifacts/metrics/phase4_model_free_blackjack/`:**
-- `sarsa_curves.csv` — regime, seed, episode, cumulative_steps, mean_return, epsilon (`regime`: `controlled` or `tuned`)
-- `qlearning_curves.csv` — same schema
-- `hyperparam_search.csv` — stage, config_id, alpha_start, alpha_end, gamma, eps_start, eps_floor, decay_horizon, mean_return_5seeds, std_return_5seeds
-- `summary_per_seed.csv` — regime, algorithm, seed, final_mean_return, convergence_episode
-- `summary_aggregate.csv` — regime, algorithm, mean_final_return, final_window_iqr, mean_convergence_episode, convergence_episode_iqr
+- `mf_learning_curves.csv` — algorithm, seed, regime, episode, window_mean (one row per window checkpoint per seed; `regime`: `controlled` or `tuned`)
+- `mf_hp_search.csv` — algorithm, stage, alpha_start, alpha_end, alpha_decay_steps, eps_decay_steps, gamma, mean_return, mean_return_std, win_rate (diagnostic)
+- `mf_eval_per_seed.csv` — algorithm, seed, regime, win_rate, draw_rate, loss_rate, mean_return, final_window_return, convergence_episode, train_wall_clock_s
+- `mf_eval_summary.csv` — algorithm, regime, metric, mean, std, iqr (long-format; metrics: win_rate, draw_rate, loss_rate, mean_return, final_window_return)
 
-`final_window_iqr`: IQR of mean return over the last 10% of episodes across seeds (stability of achieved performance).
-`convergence_episode_iqr`: IQR of convergence episode across seeds (stability of learning speed).
+`final_window_return`: last window-mean return from the training curve per seed (final learning stability proxy).
+`final_window_iqr`: IQR of `final_window_return` across seeds — in `phase4.json` checkpoint summary per (regime, algorithm).
+`convergence_episode`: retroactively computed from stored window-mean curve using the plateau rule; `null` if never converged.
+`convergence_episode_iqr`: IQR of `convergence_episode` across seeds — in `phase4.json` checkpoint summary.
 
 **Output → `artifacts/metadata/phase4.json`**
 
@@ -263,17 +262,17 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 - Primary x-axis: **episodes**. Cumulative steps logged.
 
 **Figures → `artifacts/figures/phase5_model_free_cartpole/`:**
-- `cartpole_sarsa_learning_curve.png` — mean episode length ± IQR vs episodes
-- `cartpole_qlearning_learning_curve.png` — same
-- `cartpole_sarsa_vs_qlearning_controlled.png` — overlay under shared exploration schedule
-- `cartpole_sarsa_vs_qlearning_tuned.png` — overlay under per-algorithm tuned schedule
-- `cartpole_model_free_discretization.png` — grid vs final mean episode length
+- `cartpole_mf_learning_curves.png` — mean episode length ± IQR vs episodes, two subplots (controlled | tuned)
+- `cartpole_mf_comparison.png` — SARSA vs Q-Learning bar comparison, two subplots (controlled | tuned)
+- `cartpole_mf_hp_sensitivity.png` — mean final episode length vs α_start, coloured by ε_decay_steps
+- `cartpole_mf_discretization.png` — grid vs final mean episode length (tuned regime only)
 
 **Metrics → `artifacts/metrics/phase5_model_free_cartpole/`:**
-- `sarsa_curves.csv`, `qlearning_curves.csv` — regime, seed, episode, cumulative_steps, mean_episode_len, epsilon (`regime`: `controlled` or `tuned`)
-- `discretization_study.csv` — regime, grid, algorithm, seed, final_mean_len, convergence_episode (`regime` is always `tuned` for this study)
-- `summary_per_seed.csv` — regime, algorithm, seed, final_mean_len, convergence_episode
-- `summary_aggregate.csv` — regime, algorithm, mean_final_len, final_window_iqr, mean_convergence_episode, convergence_episode_iqr
+- `mf_learning_curves.csv` — algorithm, seed, regime, episode, window_mean
+- `mf_hp_search.csv` — algorithm, stage, alpha_start, alpha_end, alpha_decay_steps, eps_decay_steps, gamma, mean_return, mean_return_std
+- `mf_eval_per_seed.csv` — algorithm, seed, regime, mean_episode_len, final_window_return, convergence_episode, train_wall_clock_s
+- `mf_eval_summary.csv` — algorithm, regime, metric, mean, std, iqr (long-format)
+- `mf_discretization.csv` — grid, algorithm, seed, final_mean_len, convergence_episode (`regime` always `tuned`)
 
 **Output → `artifacts/metadata/phase5.json`**
 
@@ -391,8 +390,8 @@ Regime assignment is fixed and must not be mixed across charts:
 - [ ] Iterations (VI/PI) or episodes (SARSA/Q-L) to convergence
 - [ ] Final performance: mean return (Blackjack) or mean episode length (CartPole)
 - [ ] VI/PI: `mean_eval_return` + `eval_return_iqr` from `policy_eval_aggregate.csv` (IQR across 5 evaluation seeds)
-- [ ] SARSA/Q-L: `summary_per_seed.csv` + `summary_aggregate.csv` (per-seed rows and aggregate rows are separate files)
-- [ ] **Stability — model-free only:** `final_window_iqr` + `convergence_episode_iqr` in `summary_aggregate.csv`
+- [ ] SARSA/Q-L: `mf_eval_per_seed.csv` (per-seed rows) + `mf_eval_summary.csv` (long-format aggregates) + `phase{N}.json` checkpoint summary
+- [ ] **Stability — model-free only:** `final_window_iqr` + `convergence_episode_iqr` in `phase{N}.json` checkpoint summary per (regime, algorithm)
 - [ ] `regime` column in all model-free CSVs: `controlled` (fixed baseline ε schedule) or `tuned` (per-algorithm)
 - [ ] Phase 6 regime assignment: controlled → learning efficiency + stability charts; tuned → final performance chart
 - [ ] Wall-clock time

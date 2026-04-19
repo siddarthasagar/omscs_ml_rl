@@ -192,6 +192,46 @@ RL_EPS_START: float = 1.0
 RL_EPS_END: float = 0.01
 RL_EPS_DECAY_STEPS: int = 10_000
 
+# ── H. Phase 4 — Blackjack Model-Free ────────────────────────────────────────
+# State space: player_sum (4–21 = 18 values) × dealer_card (1–10 = 10 values)
+#              × usable_ace (0/1 = 2 values) → capped at player_sum ≤ 21.
+# Encoding: player_sum * 11 * 2 + dealer_card * 2 + int(usable_ace) → 0–703.
+BJ_N_STATES: int = 704  # 22 * 11 * 2 (includes unreachable states; safe upper bound)
+BJ_N_ACTIONS: int = 2  # 0 = Stick, 1 = Hit
+
+# Training budget for main final runs (per algorithm × seed).
+BJ_TRAIN_EPISODES: int = 500_000
+# Logging interval for training progress lines.
+BJ_LOG_INTERVAL: int = 5_000
+
+# HP search: 3-stage progressive narrowing
+# Stage 1: wide random search (fast screening)
+BJ_HP_STAGE1_CONFIGS: int = 24  # candidate configs
+BJ_HP_STAGE1_EPISODES: int = 20_000
+# Stage 2: top-k refinement (medium budget)
+BJ_HP_STAGE2_TOP_K: int = 8
+BJ_HP_STAGE2_EPISODES: int = 50_000
+# Stage 3: fine-grained perturbation around the winner
+BJ_HP_STAGE3_TOP_K: int = 3
+BJ_HP_STAGE3_EPISODES: int = 100_000
+
+# Baseline (controlled) schedule — pre-specified neutral reference used for the
+# controlled-regime comparison.  Chosen before HP search so neither algorithm
+# has an advantage from tuned exploration.
+# Matches the FAQ quick-start schedule: ε decays over 10k steps (same as
+# RL_EPS_DECAY_STEPS default), α decays moderately over half the training budget.
+BJ_BASELINE_ALPHA_START: float = 0.5
+BJ_BASELINE_ALPHA_END: float = 0.01
+BJ_BASELINE_ALPHA_DECAY_STEPS: int = 200_000
+BJ_BASELINE_EPS_START: float = 1.0
+BJ_BASELINE_EPS_END: float = 0.01
+BJ_BASELINE_EPS_DECAY_STEPS: int = 10_000
+BJ_BASELINE_GAMMA: float = 0.99
+
+# Final-training parallelism: None = auto (min(n_jobs, cpu_count-1)), int = explicit cap.
+# Set to 1 to force serial execution for debugging or single-core environments.
+PHASE4_FINAL_TRAIN_MAX_WORKERS: int | None = None
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATA_DIR: Path = Path("data")
 ARTIFACTS_DIR: Path = Path("artifacts")
