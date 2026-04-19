@@ -14,9 +14,7 @@
 
 For multi-select questions, Canvas scores using:
 
-```
-Score = (correct_selected − wrong_selected) / total_correct × points
-```
+$$\text{Score} = \frac{\text{correct\_selected} - \text{wrong\_selected}}{\text{total\_correct}} \times \text{points}$$
 
 One wrong selection cancels one correct selection. **Strategy: only select options you are confident about.** Skipping an uncertain option is safer than guessing.
 
@@ -35,7 +33,7 @@ One wrong selection cancels one correct selection. **Strategy: only select optio
 | B | Correct (selected) | The value of a state depends on transition probabilities and expected rewards | TRUE — Bellman equation directly contains T(s,a,s') and R |
 | C | Wrong (selected) | If transitions are deterministic, the transition probability for each state-action pair is always 1 | FALSE — in a deterministic MDP, exactly one next state gets prob=1, all others get 0. The statement implies all T(s,a,s') triples equal 1, which is impossible since they must sum to 1 |
 | D | Wrong (selected) | The sum of transition probabilities across all possible next states can exceed one | FALSE — must sum to exactly 1, always |
-| E | Correct (selected) | The Bellman expectation equation relates the value of a state to the values of its possible next states | TRUE — V(s) = Σ_a π(a\|s) Σ_s' T(s,a,s') [R + γV(s')] |
+| E | Correct (selected) | The Bellman expectation equation relates the value of a state to the values of its possible next states | TRUE — V(s) = $\sum_a \pi(a|s) \sum_{s'} T(s,a,s') [R + \gamma V(s')]$ |
 | F | Correct to skip | Changing transition probabilities has no effect on the optimal policy | FALSE — changing T reshapes what policy is best |
 
 **Scoring check:** Correct options = {A, B, E}. Selected: B✓ C✗ D✗ E✓ → (2 correct − 2 wrong) / 3 × 2 = **0** ✓
@@ -70,15 +68,10 @@ All correct. Stochastic = same action can lead to different outcomes.
 
 **Calculation:**
 
-```
-Q(B3, Dig) = R(B3→B4) + γ × V_old(B4) = 5 + 0.75 × 0 = 5.0
-Q(B3, Nap) = R(Nap)   + γ × V_old(B3) = 0.2 + 0.75 × 0 = 0.2
+$$Q(B3, \text{Dig}) = R(B3\rightarrow B4) + \gamma \times V_{old}(B4) = 5 + 0.75 \times 0 = 5.0$$
+$$Q(B3, \text{Nap}) = R(\text{Nap}) + \gamma \times V_{old}(B3) = 0.2 + 0.75 \times 0 = 0.2$$
 
-V_new(B3) = π(Dig) × Q(B3,Dig) + π(Nap) × Q(B3,Nap)
-          = 0.85 × 5.0 + 0.15 × 0.2
-          = 4.25 + 0.03
-          = 4.28
-```
+$$V_{new}(B3) = \pi(\text{Dig}) \times Q(B3,\text{Dig}) + \pi(\text{Nap}) \times Q(B3,\text{Nap}) = 0.85 \times 5.0 + 0.15 \times 0.2 = 4.25 + 0.03 = 4.28$$
 
 **Answer: 4.28**
 
@@ -89,14 +82,10 @@ V_new(B3) = π(Dig) × Q(B3,Dig) + π(Nap) × Q(B3,Nap)
 
 **Calculation:**
 
-```
-Q(B2, Dig) = 3 + 0.75 × V_old(B3) = 3 + 0.75 × 0 = 3.0
-Q(B2, Nap) = 0.2 + 0.75 × V_old(B2) = 0.2 + 0.75 × 0 = 0.2
+$$Q(B2, \text{Dig}) = 3 + 0.75 \times V_{old}(B3) = 3 + 0.75 \times 0 = 3.0$$
+$$Q(B2, \text{Nap}) = 0.2 + 0.75 \times V_{old}(B2) = 0.2 + 0.75 \times 0 = 0.2$$
 
-V_new(B2) = 0.85 × 3.0 + 0.15 × 0.2
-          = 2.55 + 0.03
-          = 2.58
-```
+$$V_{new}(B2) = 0.85 \times 3.0 + 0.15 \times 0.2 = 2.55 + 0.03 = 2.58$$
 
 **Answer: 2.58**
 
@@ -109,14 +98,10 @@ V_new(B2) = 0.85 × 3.0 + 0.15 × 0.2
 
 **Calculation:**
 
-```
-Q(B1, Dig) = 1 + 0.75 × V_old(B2) = 1 + 0.75 × 0 = 1.0
-Q(B1, Nap) = 0.2 + 0.75 × V_old(B1) = 0.2 + 0.75 × 0 = 0.2
+$$Q(B1, \text{Dig}) = 1 + 0.75 \times V_{old}(B2) = 1 + 0.75 \times 0 = 1.0$$
+$$Q(B1, \text{Nap}) = 0.2 + 0.75 \times V_{old}(B1) = 0.2 + 0.75 \times 0 = 0.2$$
 
-V_new(B1) = 0.85 × 1.0 + 0.15 × 0.2
-          = 0.85 + 0.03
-          = 0.88
-```
+$$V_{new}(B1) = 0.85 \times 1.0 + 0.15 \times 0.2 = 0.85 + 0.03 = 0.88$$
 
 **Answer: 0.88**
 
@@ -125,11 +110,9 @@ V_new(B1) = 0.85 × 1.0 + 0.15 × 0.2
 ### Q6 — 0 / 1 (Unanswered)
 **Topic:** Expected total worm haul starting from B1 after this update step
 
-After one Bellman sweep from all-zero values, V(B1) captures the one-step lookahead (immediate expected reward, since all bootstrapped values were 0). The expected worm haul = V_new(B1).
+After one Bellman sweep from all-zero values, V(B1) captures the one-step lookahead (immediate expected reward, since all bootstrapped values were 0). The expected worm haul = $V_{new}(B1)$.
 
-```
-V_new(B1) = 0.85 × (1 + 0) + 0.15 × (0.2 + 0) = 0.88
-```
+$$V_{new}(B1) = 0.85 \times (1 + 0) + 0.15 \times (0.2 + 0) = 0.88$$
 
 **Answer: 0.88**
 
@@ -198,15 +181,9 @@ Full Replacement and Increase Cooling both share the highest Q-value of 8.0 — 
 
 **Real-life analogy:** Epsilon-greedy is like a restaurant regular: 80% of the time they order one of their two favourites (greedy), 20% of the time they pick randomly from the full menu. With 4 items and 2 favourites, each favourite gets (0.8/2) from exploitation plus (0.2/4) from random exploration.
 
-**Calculation:** ε = 0.2, k_greedy = 2, k_total = 4. Full Replacement is greedy.
+**Calculation:** $\varepsilon = 0.2$, $k_{greedy} = 2$, $k_{total} = 4$. Full Replacement is greedy.
 
-```
-P(greedy action) = (1 − ε) / k_greedy  +  ε / k_total
-                 = (1 − 0.2) / 2        +  0.2 / 4
-                 = 0.8 / 2              +  0.05
-                 = 0.40 + 0.05
-                 = 0.45
-```
+$$P(\text{greedy action}) = \frac{1 - \varepsilon}{k_{greedy}} + \frac{\varepsilon}{k_{total}} = \frac{0.8}{2} + \frac{0.2}{4} = 0.40 + 0.05 = 0.45$$
 
 **Your answer: 0.0561 (wrong). Correct answer: 0.45**
 
@@ -217,11 +194,7 @@ P(greedy action) = (1 − ε) / k_greedy  +  ε / k_total
 
 Do Nothing is non-greedy (Q = 5.0, not maximum). It only appears in the random exploration portion.
 
-```
-P(non-greedy action) = ε / k_total
-                     = 0.2 / 4
-                     = 0.05
-```
+$$P(\text{non-greedy action}) = \frac{\varepsilon}{k_{total}} = \frac{0.2}{4} = 0.05$$
 
 **Your answer: 0.0351 (wrong). Correct answer: 0.05**
 
@@ -234,13 +207,7 @@ P(non-greedy action) = ε / k_total
 
 Increase Cooling remains greedy (Q = 8.0, still maximum). Only ε changes.
 
-```
-P(IC) = (1 − ε) / k_greedy  +  ε / k_total
-      = (1 − 0.6) / 2        +  0.6 / 4
-      = 0.4 / 2              +  0.15
-      = 0.20 + 0.15
-      = 0.35
-```
+$$P(\text{IC}) = \frac{1 - \varepsilon}{k_{greedy}} + \frac{\varepsilon}{k_{total}} = \frac{0.4}{2} + \frac{0.6}{4} = 0.20 + 0.15 = 0.35$$
 
 **Your answer: 0.1684 (wrong). Correct answer: 0.35**
 
@@ -308,19 +275,17 @@ P(IC) = (1 − ε) / k_greedy  +  ε / k_total
 
 **Calculation:**
 
-```
 For each spot, find min across all rival scenarios R1–R4.
 Then choose the spot with the maximum of those minimums (maximin).
 
-Spot A: min(950, 800, 450, 200) = 200
-Spot B: min(900, 700, 600, 400) = 400
-Spot C: min(1000, 500, 500, 350) = 350
-Spot D: min(850, 850, 750, 600) = 600
-Spot E: min(1200, 700, 400, 250) = 250
-Spot F: min(1100, 800, 800, 700) = 700  ← maximum worst-case
+- Spot A: $\min(950, 800, 450, 200) = 200$
+- Spot B: $\min(900, 700, 600, 400) = 400$
+- Spot C: $\min(1000, 500, 500, 350) = 350$
+- Spot D: $\min(850, 850, 750, 600) = 600$
+- Spot E: $\min(1200, 700, 400, 250) = 250$
+- Spot F: $\min(1100, 800, 800, 700) = 700$ ← maximum worst-case
 
-Minimax choice = Spot F, guaranteed worst-case = $700
-```
+**Minimax choice = Spot F, guaranteed worst-case = $700**
 
 **Your answer: Spot C ($350 worst-case) — wrong. Correct answer: Spot F ($700)**
 
@@ -333,16 +298,15 @@ Minimax choice = Spot F, guaranteed worst-case = $700
 
 **Calculation:**
 
-```
-For each rival scenario j:  0.4 × Payoff(F, j)  +  0.6 × Payoff(D, j)
+For each rival scenario $j$:
+$$0.4 \times \text{Payoff}(F, j) + 0.6 \times \text{Payoff}(D, j)$$
 
-R1: 0.4 × 1100  +  0.6 × 850  =  440  +  510  =  950
-R2: 0.4 × 800   +  0.6 × 850  =  320  +  510  =  830
-R3: 0.4 × 800   +  0.6 × 750  =  320  +  450  =  770
-R4: 0.4 × 700   +  0.6 × 600  =  280  +  360  =  640  ← minimum
+- R1: $0.4 \times 1100 + 0.6 \times 850 = 440 + 510 = 950$
+- R2: $0.4 \times 800 + 0.6 \times 850 = 320 + 510 = 830$
+- R3: $0.4 \times 800 + 0.6 \times 750 = 320 + 450 = 770$
+- R4: $0.4 \times 700 + 0.6 \times 600 = 280 + 360 = 640$ ← minimum
 
-Expected worst-case = min(950, 830, 770, 640) = $640
-```
+$$\text{Expected worst-case} = \min(950, 830, 770, 640) = \$640$$
 
 **Your answer: $3,190 — wrong. Correct answer: $640**
 
@@ -419,13 +383,11 @@ You have a mischievous dog (Pythagoruff) who steals donuts. You can Guard (spray
 
 **Calculation — switching to Ignore in R3:**
 
-```
-Round 1: You Guard  + Pythagoruff Steals  →  Your payoff = -1
-Round 2: You Guard  + Pythagoruff Steals  →  Your payoff = -1
-Round 3: You Ignore + Pythagoruff Steals  →  Your payoff = -4  ← policy switch
+- Round 1: You Guard + Pythagoruff Steals → Your payoff = −1
+- Round 2: You Guard + Pythagoruff Steals → Your payoff = −1
+- Round 3: You Ignore + Pythagoruff Steals → Your payoff = −4
 
-Total = -1 + (-1) + (-4) = -6
-```
+Total = −1 + (−1) + (−4) = −6
 
 **Your answer: 0 — wrong. Correct answer: −6**
 
@@ -438,13 +400,11 @@ Total = -1 + (-1) + (-4) = -6
 
 **Calculation — switching to Ignore in R3:**
 
-```
-Round 1: You Guard  + Pythagoruff Steals  →  Pythagoruff = -3  (gets sprayed)
-Round 2: You Guard  + Pythagoruff Steals  →  Pythagoruff = -3  (gets sprayed)
-Round 3: You Ignore + Pythagoruff Steals  →  Pythagoruff = +3  (steals freely, no spray)
+- Round 1: You Guard + Pythagoruff Steals → Pythagoruff = −3 (gets sprayed)
+- Round 2: You Guard + Pythagoruff Steals → Pythagoruff = −3 (gets sprayed)
+- Round 3: You Ignore + Pythagoruff Steals → Pythagoruff = +3 (steals freely, no spray)
 
-Total = -3 + (-3) + 3 = -3
-```
+Total = −3 + (−3) + 3 = −3
 
 **Your answer: −6 — wrong. Correct answer: −3**
 
@@ -457,13 +417,11 @@ Total = -3 + (-3) + 3 = -3
 
 **Calculation:**
 
-```
-Round 1: Guard + Steal → You = -1
-Round 2: Guard + Steal → You = -1
-Round 3: Guard + Steal → You = -1
+- Round 1: Guard + Steal → You = −1
+- Round 2: Guard + Steal → You = −1
+- Round 3: Guard + Steal → You = −1
 
-Total = -1 + (-1) + (-1) = -3  ✓
-```
+Total = −1 + (−1) + (−1) = −3 ✓
 
 All three rounds you Guard, Pythagoruff always Steals, consistently −1 per round. **Correctly answered: −3 ✓**
 
@@ -474,13 +432,11 @@ All three rounds you Guard, Pythagoruff always Steals, consistently −1 per rou
 
 **Calculation:**
 
-```
-Round 1: Guard + Steal → Pythagoruff = -3
-Round 2: Guard + Steal → Pythagoruff = -3
-Round 3: Guard + Steal → Pythagoruff = -3
+- Round 1: Guard + Steal → Pythagoruff = −3
+- Round 2: Guard + Steal → Pythagoruff = −3
+- Round 3: Guard + Steal → Pythagoruff = −3
 
-Total = -3 + (-3) + (-3) = -9  ✓
-```
+Total = −3 + (−3) + (−3) = −9 ✓
 
 Pythagoruff gets sprayed every round. **Correctly answered: −9 ✓**
 
@@ -491,12 +447,10 @@ Pythagoruff gets sprayed every round. **Correctly answered: −9 ✓**
 
 **Calculation:**
 
-```
-Your payoff if you switch      = -6  (Q20 correct answer)
-Your payoff if you don't switch = -3  (Q22 correct answer)
+$$\text{Your payoff if you switch} = -6 \text{ (Q20 correct answer)}$$
+$$\text{Your payoff if you don't switch} = -3 \text{ (Q22 correct answer)}$$
 
-Difference = switching − not switching = -6 − (-3) = -3
-```
+$$\text{Difference} = \text{switching} - \text{not switching} = -6 - (-3) = -3$$
 
 Switching gives you −3 less than not switching. Switching makes you worse off.
 

@@ -23,26 +23,23 @@
 - Changing T **does** affect the optimal policy
 
 ### Bellman Expectation Equation
-```
-V^π(s) = Σ_a π(a|s) × Σ_{s'} T(s,a,s') × [ R(s,a,s') + γ × V^π(s') ]
-```
-- V^π(s) is the expected discounted return starting from state s under policy π
+
+$$V^\pi(s) = \sum_a \pi(a|s) \sum_{s'} T(s,a,s') \big[ R(s,a,s') + \gamma \times V^\pi(s') \big]$$
+
+- $V^\pi(s)$ is the expected discounted return starting from state $s$ under policy $\pi$
 - It relates the value of a state to the values of its **successor states**
 
 ### Bellman Optimality Equation
-```
-V*(s) = max_a Σ_{s'} T(s,a,s') × [ R(s,a,s') + γ × V*(s') ]
-```
+
+$$V^*(s) = \max_a \sum_{s'} T(s,a,s') \big[ R(s,a,s') + \gamma \times V^*(s') \big]$$
 
 ---
 
 ## 2. Policy Evaluation (Bellman Update)
 
-Used to compute V^π for a **fixed policy**. Repeatedly apply:
+Used to compute $V^\pi$ for a **fixed policy**. Repeatedly apply:
 
-```
-V_new(s) = Σ_a π(a|s) × Σ_{s'} T(s,a,s') × [ R(s,a,s') + γ × V_old(s') ]
-```
+$$V_{new}(s) = \sum_a \pi(a|s) \sum_{s'} T(s,a,s') \big[ R(s,a,s') + \gamma \times V_{old}(s') \big]$$
 
 ### Synchronous vs Asynchronous
 | Type | Rule |
@@ -51,18 +48,15 @@ V_new(s) = Σ_a π(a|s) × Σ_{s'} T(s,a,s') × [ R(s,a,s') + γ × V_old(s') ]
 | Asynchronous | Use the latest available value (updates propagate immediately within one sweep). |
 
 ### Worked Example Pattern (Molebert-style)
-Given: π(Dig) = 0.85, π(Nap) = 0.15, γ = 0.75, all V = 0 initially.
+Given: $\pi(Dig) = 0.85$, $\pi(Nap) = 0.15$, $\gamma = 0.75$, all $V = 0$ initially.
 
-```
-Step 1: Compute from the terminal state backwards.
-Step 2: For each state s:
-  V_new(s) = π(Dig) × [R_dig + γ × V_old(next_dig)]
-           + π(Nap) × [R_nap + γ × V_old(s)]
+**Step 1:** Compute from the terminal state backwards.
 
-Example — V(B3), R(dig)=5, R(nap)=0.2:
-  = 0.85 × (5 + 0.75×0) + 0.15 × (0.2 + 0.75×0)
-  = 4.25 + 0.03 = 4.28
-```
+**Step 2:** For each state $s$:
+$$V_{new}(s) = \pi(Dig) \times [R_{dig} + \gamma \times V_{old}(next_{dig})] + \pi(Nap) \times [R_{nap} + \gamma \times V_{old}(s)]$$
+
+**Example —** $V(B3)$, $R_{dig}=5$, $R_{nap}=0.2$:
+$$= 0.85 \times (5 + 0.75\times 0) + 0.15 \times (0.2 + 0.75\times 0) = 4.25 + 0.03 = 4.28$$
 
 ---
 
@@ -71,10 +65,10 @@ Example — V(B3), R(dig)=5, R(nap)=0.2:
 ### Update Rules
 | Algorithm | Type | Update Formula |
 |---|---|---|
-| SARSA | On-policy | Q(s,a) ← Q(s,a) + α [ r + γ Q(s',**a'**) − Q(s,a) ] |
-| Q-Learning | Off-policy | Q(s,a) ← Q(s,a) + α [ r + γ **max_{a'}** Q(s',a') − Q(s,a) ] |
+| SARSA | On-policy | $Q(s,a) \leftarrow Q(s,a) + \alpha [ r + \gamma Q(s',a') - Q(s,a) ]$ |
+| Q-Learning | Off-policy | $Q(s,a) \leftarrow Q(s,a) + \alpha [ r + \gamma \max_{a'} Q(s',a') - Q(s,a) ]$ |
 
-where a' in SARSA is the **actual next action taken** (including exploration).
+where $a'$ in SARSA is the **actual next action taken** (including exploration).
 
 ### Key Differences
 
@@ -95,20 +89,18 @@ where a' in SARSA is the **actual next action taken** (including exploration).
 ## 4. Epsilon-Greedy Action Selection
 
 ### Setup
-- ε = exploration rate (0 ≤ ε ≤ 1)
-- k_total = total number of actions
-- k_greedy = number of greedy actions (those with maximum Q-value)
+- $\varepsilon$ = exploration rate ($0 \leq \varepsilon \leq 1$)
+- $k_{total}$ = total number of actions
+- $k_{greedy}$ = number of greedy actions (those with maximum Q-value)
 
 ### Probability Formulas
-```
-P(greedy action)     = (1 − ε) / k_greedy  +  ε / k_total
 
-P(non-greedy action) = ε / k_total
-```
+$$P(\text{greedy action}) = \frac{1 - \varepsilon}{k_{greedy}} + \frac{\varepsilon}{k_{total}}$$
+$$P(\text{non-greedy action}) = \frac{\varepsilon}{k_{total}}$$
 
 ### Quick Reference Table (4 total actions, 2 greedy)
 
-| ε | P(each greedy) | P(each non-greedy) |
+| $\varepsilon$ | $P$(each greedy) | $P$(each non-greedy) |
 |---|---|---|
 | 0.0 | 0.500 | 0.000 |
 | 0.1 | 0.475 | 0.025 |
@@ -144,26 +136,21 @@ Do NOT weight by Q-value magnitudes. Once you know which actions are greedy vs n
 ### Minimax Strategy (Zero-Sum Games)
 Huey maximises, Dewey/opponents minimise Huey's payoff.
 
-```
-Step 1: For each of Huey's options (rows):
-        find the MINIMUM payoff across all opponent columns.
+**Step 1:** For each of Huey's options (rows), find the MINIMUM payoff across all opponent columns.
 
-Step 2: Choose the row with the MAXIMUM of those minimums.
+**Step 2:** Choose the row with the MAXIMUM of those minimums.
 
-Minimax = argmax_{row} min_{col} Payoff(row, col)
-```
+$$\text{Minimax} = \arg\max_{row} \min_{col} \text{Payoff}(row, col)$$
 
 ### Mixed Strategy Worst-Case
-When mixing p% option X and (1−p)% option Y:
+When mixing $p\%$ option X and $(1-p)\%$ option Y:
 
-```
-Step 1: For EACH opponent column j, compute the blended payoff:
-        Blended(j) = p × Payoff(X, j) + (1−p) × Payoff(Y, j)
+**Step 1:** For EACH opponent column $j$, compute the blended payoff:
+$$\text{Blended}(j) = p \times \text{Payoff}(X, j) + (1-p) \times \text{Payoff}(Y, j)$$
 
-Step 2: Worst-case = min_j Blended(j)
-```
+**Step 2:** Worst-case = $\min_j \text{Blended}(j)$
 
-> NEVER: min(X) × p + min(Y) × (1−p) — this is wrong because opponent picks ONE scenario, not separate worst-cases per option.
+> **NEVER:** $\min(X) \times p + \min(Y) \times (1-p)$ — this is wrong because opponent picks ONE scenario, not separate worst-cases per option.
 
 ### Nash Equilibrium
 A strategy profile where no player can improve by unilaterally changing their strategy.
@@ -179,11 +166,9 @@ One player's gain = the other's loss in EVERY outcome. If any outcome has both p
 ## 7. Repeated Games & Cooperation
 
 ### Folk Theorem
-In an infinitely repeated game with discounting, **any payoff above the minimax value** can be sustained as a Nash equilibrium — provided players are patient enough (discount factor δ is sufficiently high).
+In an infinitely repeated game with discounting, **any payoff above the minimax value** can be sustained as a Nash equilibrium — provided players are patient enough (discount factor $\delta$ is sufficiently high).
 
-```
-Condition for cooperation: δ ≥ (Temptation gain) / (Temptation gain + Punishment loss)
-```
+$$\text{Condition for cooperation: } \delta \geq \frac{\text{Temptation gain}}{\text{Temptation gain} + \text{Punishment loss}}$$
 
 > Heavy discounting (low δ, caring little about the future) = cooperation breaks down.
 > Patient players (high δ) = cooperation sustainable.
@@ -234,35 +219,23 @@ Ask: "Is there any outcome where both players gain or both lose?"
 ## 9. Quick Formula Reference Card
 
 ### Bellman Policy Evaluation (1 step)
-```
-V_new(s) = Σ_a π(a|s) [R(s,a) + γ × V_old(next_state(s,a))]
-```
+$$V_{new}(s) = \sum_a \pi(a|s) \big[ R(s,a) + \gamma \times V_{old}(\text{next\_state}(s,a)) \big]$$
 
 ### Epsilon-Greedy Probabilities
-```
-P(greedy)     = (1 − ε) / k_greedy  +  ε / k_total
-P(non-greedy) = ε / k_total
-```
+$$P(\text{greedy}) = \frac{1 - \varepsilon}{k_{greedy}} + frac{\varepsilon}{k_{total}}$$
+$$P(\text{non-greedy}) = \frac{\varepsilon}{k_{total}}$$
 
 ### Minimax (pure strategy)
-```
-Best spot = argmax_i  min_j  Payoff(i, j)
-```
+$$\text{Best spot} = \arg\max_i \min_j \text{Payoff}(i, j)$$
 
 ### Mixed Strategy Worst-Case
-```
-Worst-case = min_j  [ p × Payoff(X,j) + (1−p) × Payoff(Y,j) ]
-```
+$$\text{Worst-case} = \min_j \big[ p \times \text{Payoff}(X,j) + (1-p) \times \text{Payoff}(Y,j) \big]$$
 
 ### SARSA Update
-```
-Q(s,a) ← Q(s,a) + α [ r + γ Q(s', a') − Q(s,a) ]     ← a' is actual next action
-```
+$$Q(s,a) \leftarrow Q(s,a) + \alpha \big[ r + \gamma \times Q(s', a') - Q(s,a) \big] \quad \text{← $a'$ is actual next action}$$
 
 ### Q-Learning Update
-```
-Q(s,a) ← Q(s,a) + α [ r + γ max_{a'} Q(s',a') − Q(s,a) ]
-```
+$$Q(s,a) \leftarrow Q(s,a) + \alpha \big[ r + \gamma \times \max_{a'} Q(s',a') - Q(s,a) \big]$$
 
 ---
 
@@ -286,9 +259,7 @@ Q(s,a) ← Q(s,a) + α [ r + γ max_{a'} Q(s',a') − Q(s,a) ]
 ## 11. Negative Marking Strategy
 
 Canvas multi-select scoring:
-```
-Score = (correct_selected − wrong_selected) / total_correct × points
-```
+$$\text{Score} = \frac{\text{correct\_selected} - \text{wrong\_selected}}{\text{total\_correct}} \times \text{points}$$
 
 **Rule:** Each wrong selection cancels one correct selection.
 

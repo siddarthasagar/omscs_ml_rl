@@ -969,3 +969,255 @@ def plot_mf_hp_sensitivity(
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+# ── Phase 5 — CartPole model-free ─────────────────────────────────────────────
+
+
+def plot_cp_mf_learning_curve(
+    metrics_dir: Path,
+    fig_dir: Path,
+) -> Path:
+    """Learning curves for CartPole SARSA and Q-Learning, split by regime.
+
+    Reads ``mf_learning_curves.csv``
+    (columns: algorithm, seed, regime, episode, window_mean).
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "mf_learning_curves.csv")
+    if "regime" not in df.columns:
+        df["regime"] = "tuned"
+    available_regimes = [
+        r for r in ["controlled", "tuned"] if r in df["regime"].unique()
+    ]
+
+    fig, axes = plt.subplots(
+        1, len(available_regimes), figsize=(7 * len(available_regimes), 5), sharey=True
+    )
+    if len(available_regimes) == 1:
+        axes = [axes]
+
+    for ax, regime in zip(axes, available_regimes):
+        regime_df = df[df["regime"] == regime]
+        for algo in ["sarsa", "qlearning"]:
+            sub = regime_df[regime_df["algorithm"] == algo]
+            if sub.empty:
+                continue
+            grouped = (
+                sub.groupby("episode")["window_mean"].agg(["mean", "std"]).reset_index()
+            )
+            color = MF_ALGO_COLORS[algo]
+            label = "SARSA" if algo == "sarsa" else "Q-Learning"
+            ax.plot(
+                grouped["episode"],
+                grouped["mean"],
+                label=label,
+                color=color,
+                linewidth=1.5,
+            )
+            ax.fill_between(
+                grouped["episode"],
+                grouped["mean"] - grouped["std"].fillna(0),
+                grouped["mean"] + grouped["std"].fillna(0),
+                alpha=0.15,
+                color=color,
+            )
+        ax.set_xlabel("Episode")
+        ax.set_title(f"{regime.capitalize()} schedule", fontweight="bold")
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+
+    axes[0].set_ylabel("Window-mean episode length (100-ep window)")
+    fig.suptitle(
+        "CartPole Learning Curves — SARSA vs Q-Learning", fontsize=12, fontweight="bold"
+    )
+    plt.tight_layout()
+    out = fig_dir / "cartpole_mf_learning_curves.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_cp_mf_comparison(
+    metrics_dir: Path,
+    fig_dir: Path,
+) -> Path:
+    """Grouped bar chart: mean episode length comparison, controlled vs tuned.
+
+    Reads ``mf_eval_summary.csv``
+    (columns: algorithm, regime, metric, mean, std, iqr).
+
+    Error whiskers = IQR/2 (half-IQR symmetric, robust to seed outliers).
+    IQR value shown in legend label.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "mf_eval_summary.csv")
+    if "regime" not in df.columns:
+        df["regime"] = "tuned"
+    available_regimes = [
+        r for r in ["controlled", "tuned"] if r in df["regime"].unique()
+    ]
+
+    x = np.array([0])
+    width = 0.35
+
+    fig, axes = plt.subplots(
+        1, len(available_regimes), figsize=(5 * len(available_regimes), 5), sharey=True
+    )
+    if len(available_regimes) == 1:
+        axes = [axes]
+
+    for ax, regime in zip(axes, available_regimes):
+        regime_df = df[(df["regime"] == regime) & (df["metric"] == "mean_episode_len")]
+        for offset, algo, display in zip(
+            [-width / 2, width / 2],
+            ["sarsa", "qlearning"],
+            ["SARSA", "Q-Learning"],
+        ):
+            sub = regime_df[regime_df["algorithm"] == algo]
+            if sub.empty:
+                continue
+            mean_val = float(sub["mean"].iloc[0])
+            iqr_val = float(sub["iqr"].iloc[0])
+            ax.bar(
+                x + offset,
+                [mean_val],
+                width,
+                yerr=[iqr_val / 2],
+                label=f"{display} (IQR={iqr_val:.1f})",
+                color=MF_ALGO_COLORS[algo],
+                alpha=0.85,
+                capsize=5,
+                error_kw={"elinewidth": 1.2},
+            )
+        ax.set_xticks(x)
+        ax.set_xticklabels(["Mean episode length"])
+        ax.set_title(f"{regime.capitalize()} schedule", fontweight="bold")
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3, axis="y")
+
+    axes[0].set_ylabel("Mean episode length (steps)")
+    fig.suptitle(
+        "CartPole Final Eval — SARSA vs Q-Learning", fontsize=12, fontweight="bold"
+    )
+    plt.tight_layout()
+    out = fig_dir / "cartpole_mf_comparison.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_cp_mf_hp_sensitivity(
+    metrics_dir: Path,
+    fig_dir: Path,
+) -> Path:
+    """HP sensitivity scatter: mean_episode_len vs α_start, coloured by ε_decay_steps.
+
+    Reads ``mf_hp_search.csv``
+    (columns: algorithm, alpha_start, eps_decay_steps, mean_episode_len).
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "mf_hp_search.csv")
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+
+    for ax, algo, display in zip(axes, ["sarsa", "qlearning"], ["SARSA", "Q-Learning"]):
+        sub = df[df["algorithm"] == algo]
+        sc = ax.scatter(
+            sub["alpha_start"],
+            sub["mean_episode_len"],
+            c=sub["eps_decay_steps"],
+            cmap="viridis",
+            alpha=0.8,
+            edgecolors="white",
+            linewidths=0.4,
+            s=60,
+        )
+        ax.set_xlabel("α start")
+        ax.set_title(display, fontweight="bold")
+        ax.grid(True, alpha=0.3)
+
+    axes[0].set_ylabel("Mean episode length")
+    cbar = fig.colorbar(sc, ax=axes.tolist(), shrink=0.8)
+    cbar.set_label("ε decay steps")
+    fig.suptitle("HP Sensitivity — CartPole Model-Free", fontsize=12, fontweight="bold")
+    plt.tight_layout()
+    out = fig_dir / "cartpole_mf_hp_sensitivity.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_cp_mf_discretization(
+    metrics_dir: Path,
+    fig_dir: Path,
+) -> Path:
+    """Grouped bar chart: final mean episode length vs discretization grid.
+
+    Reads ``mf_discretization.csv``
+    (columns: grid, algorithm, seed, final_mean_len, convergence_episode).
+    One group per grid (coarse / default / fine), bars for SARSA and Q-Learning.
+    Error whiskers = IQR/2 (half-IQR, robust to seed outliers).
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "mf_discretization.csv")
+    grid_names = [g for g in ["coarse", "default", "fine"] if g in df["grid"].unique()]
+    x = np.arange(len(grid_names))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for offset, algo, display in zip(
+        [-width / 2, width / 2], ["sarsa", "qlearning"], ["SARSA", "Q-Learning"]
+    ):
+        means, iqr_halves = [], []
+        for grid in grid_names:
+            sub = df[(df["grid"] == grid) & (df["algorithm"] == algo)]["final_mean_len"]
+            means.append(float(sub.mean()))
+            iqr = float(np.percentile(sub, 75) - np.percentile(sub, 25))
+            iqr_halves.append(iqr / 2)
+        ax.bar(
+            x + offset,
+            means,
+            width,
+            yerr=iqr_halves,
+            label=display,
+            color=MF_ALGO_COLORS[algo],
+            alpha=0.85,
+            capsize=4,
+            error_kw={"elinewidth": 1.2},
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([g.capitalize() for g in grid_names])
+    ax.set_xlabel("Discretization grid")
+    ax.set_ylabel("Mean episode length (steps)")
+    ax.set_title("CartPole Discretization Study — Tuned Regime", fontweight="bold")
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3, axis="y")
+    plt.tight_layout()
+    out = fig_dir / "cartpole_mf_discretization.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out

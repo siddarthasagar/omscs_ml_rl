@@ -140,8 +140,14 @@ Applied example for DP phases:
 Running-mean plateau: first episode E where `|mean_return(E-W:E) − mean_return(E-2W:E-W)| < RL_CONVERGENCE_DELTA` for `RL_CONVERGENCE_M` consecutive window-pairs.
 Constants: `W=100`, `RL_CONVERGENCE_DELTA=0.01`, `RL_CONVERGENCE_M=3` (all in `config.py`).
 
+**Variability convention for model-free plots:**
+- Learning curves (line plots): mean ± std band across seeds (smooth; std is appropriate for window-averaged time series).
+- Bar charts (comparison, discretization): mean with ±IQR/2 whiskers (robust to seed outliers; IQR value shown in legend label).
+
 **Wall-clock accounting:**
-- Model-free bars in the wall-clock chart = controlled-regime final reporting run (5 seeds × full episode budget). HP search cost noted separately as overhead.
+- `train_wall_clock_s` in checkpoint = controlled+tuned final training only (timed from job submission to collection, before discretization study).
+- `disc_wall_clock_s` = discretization study separately timed.
+- Model-free bars in the wall-clock chart = controlled-regime `train_wall_clock_s`. HP search cost noted separately as overhead.
 - CartPole DP bar = model-build rollout cost (stacked) + planning run.
 
 **DP evaluation outputs:**

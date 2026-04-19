@@ -414,8 +414,15 @@ def test_run_lifecycle(tmp_path, monkeypatch):
     import pandas as pd
 
     per_seed = pd.read_csv(fake_paths.metrics_dir / "mf_eval_per_seed.csv")
-    for col in ["algorithm", "seed", "regime", "mean_return", "final_window_return",
-                "convergence_episode", "train_wall_clock_s"]:
+    for col in [
+        "algorithm",
+        "seed",
+        "regime",
+        "mean_return",
+        "final_window_return",
+        "convergence_episode",
+        "train_wall_clock_s",
+    ]:
         assert col in per_seed.columns, f"missing column {col}"
     assert set(per_seed["regime"].unique()) == {"controlled", "tuned"}
     assert set(per_seed["algorithm"].unique()) == {"sarsa", "qlearning"}

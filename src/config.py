@@ -232,6 +232,41 @@ BJ_BASELINE_GAMMA: float = 0.99
 # Set to 1 to force serial execution for debugging or single-core environments.
 PHASE4_FINAL_TRAIN_MAX_WORKERS: int | None = None
 
+# ── I. Phase 5 — CartPole Model-Free ─────────────────────────────────────────
+# State space: determined by CartPoleDiscretizer (grid-dependent).
+# Default grid (3,3,8,12) → 864 states.  n_states is looked up at runtime.
+CP_N_ACTIONS: int = 2  # push-left / push-right
+
+# Training budget for main final runs (per algorithm × seed).
+# CartPole episodes are long (up to 500 steps); 20k episodes is sufficient for
+# plateau-based convergence at the default grid resolution.
+CP_TRAIN_EPISODES: int = 20_000
+
+# HP search: 3-stage progressive narrowing (same structure as Phase 4).
+CP_HP_STAGE1_CONFIGS: int = 24
+CP_HP_STAGE1_EPISODES: int = 2_000
+CP_HP_STAGE2_TOP_K: int = 8
+CP_HP_STAGE2_EPISODES: int = 5_000
+CP_HP_STAGE3_TOP_K: int = 3
+CP_HP_STAGE3_EPISODES: int = 10_000
+
+# Baseline (controlled) schedule — same neutral FAQ quick-start schedule as BJ.
+# α: moderate decay over first half of training steps (est. ~200k steps at avg 20 ep len).
+# ε: 1.0 → 0.01 over 10k steps (FAQ quick-start default), then fixed.
+CP_BASELINE_ALPHA_START: float = 0.5
+CP_BASELINE_ALPHA_END: float = 0.01
+CP_BASELINE_ALPHA_DECAY_STEPS: int = 100_000
+CP_BASELINE_EPS_START: float = 1.0
+CP_BASELINE_EPS_END: float = 0.01
+CP_BASELINE_EPS_DECAY_STEPS: int = 10_000
+CP_BASELINE_GAMMA: float = 0.99
+
+# Discretization study: run tuned HP winner on each grid, 5 seeds each.
+# Budget per (grid, algo, seed): same as main final training.
+CP_DISC_TRAIN_EPISODES: int = CP_TRAIN_EPISODES
+
+PHASE5_FINAL_TRAIN_MAX_WORKERS: int | None = None
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATA_DIR: Path = Path("data")
 ARTIFACTS_DIR: Path = Path("artifacts")
