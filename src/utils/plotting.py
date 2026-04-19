@@ -15,29 +15,41 @@ import numpy as np
 
 DEFAULT_DPI: int = 150
 
-# Algorithm color palette — fixed so VI/PI look the same across all figures.
+# Algorithm colors — blue for VI, brown for PI; fixed across all figures.
+# No other constant in this file should reuse these hues.
 ALGO_COLORS: dict[str, str] = {
     "VI": "#4C72B0",  # blue
-    "PI": "#DD8452",  # orange
+    "PI": "#8C564B",  # brown
 }
 
-# Blackjack action colors — fixed semantic mapping across policy figures.
-BJ_ACTION_COLORS: dict[str, str] = {
-    "Stick": "#4C72B0",  # blue
-    "Hit": "#DD8452",  # orange
-}
+# Grid colors — used whenever marks represent coarse / default / fine grids,
+# including convergence curves, bar charts, and coverage figures.
 CP_GRID_COLORS: dict[str, str] = {
-    "coarse": "#DD8452",  # orange
-    "default": "#4C72B0",  # blue
-    "fine": "#55A868",  # green
+    "coarse": "#BAB0AC",  # muted gray
+    "default": "#76B7B2",  # teal
+    "fine": "#B07AA1",  # purple
+}
+
+# Action colors — semantically distinct from algorithm and grid colors.
+# Used only in policy-map and action-slice figures; must not imply algorithm identity.
+BJ_ACTION_COLORS: dict[str, str] = {
+    "Stick": "#59A14F",  # green
+    "Hit": "#F28E2B",  # orange
+}
+CP_ACTION_COLORS: dict[str, str] = {
+    "left": "#F28E2B",  # orange — action 0, push left
+    "right": "#59A14F",  # green — action 1, push right
+}
+
+# Reference colors — threshold lines, stable-iteration markers, and annotations.
+# Muted so they do not dominate the primary data ink.
+REFERENCE_COLORS: dict[str, str] = {
+    "threshold": "#E15759",  # muted red — convergence threshold (δ lines)
+    "stable": "#499894",  # muted teal — stable-iteration markers
 }
 
 # CartPole terminal-angle marker — environment-defined constant (±12°).
 CARTPOLE_TERMINAL_ANGLE_RAD: float = 12 * np.pi / 180  # ≈ 0.2094 rad
-
-# Convergence annotation colors
-COLOR_DELTA_LINE: str = "red"
-COLOR_STABLE_LINE: str = "#2ca02c"  # green
 
 
 # ── Blackjack domain helper ───────────────────────────────────────────────────
@@ -126,7 +138,7 @@ def plot_bj_convergence(metrics_dir: Path, metadata: dict, fig_dir: Path) -> Pat
     )
     ax_vi.axhline(
         vi_delta,
-        color=COLOR_DELTA_LINE,
+        color=REFERENCE_COLORS["threshold"],
         linewidth=1,
         linestyle="--",
         label=f"δ = {vi_delta:.0e}",
@@ -157,7 +169,7 @@ def plot_bj_convergence(metrics_dir: Path, metadata: dict, fig_dir: Path) -> Pat
     ax_pi.set_yscale("log")
     ax_pi.axvline(
         pi_stable_iter,
-        color=COLOR_STABLE_LINE,
+        color=REFERENCE_COLORS["stable"],
         linewidth=1.2,
         linestyle=":",
         label=f"Policy stable (iter {pi_stable_iter})",
@@ -169,8 +181,8 @@ def plot_bj_convergence(metrics_dir: Path, metadata: dict, fig_dir: Path) -> Pat
         xytext=(6, 8),
         textcoords="offset points",
         fontsize=8,
-        color=COLOR_STABLE_LINE,
-        arrowprops=dict(arrowstyle="-", color=COLOR_STABLE_LINE, lw=0.8),
+        color=REFERENCE_COLORS["stable"],
+        arrowprops=dict(arrowstyle="-", color=REFERENCE_COLORS["stable"], lw=0.8),
     )
     ax_pi.set_xlim(0, iter_max + 1)
     ax_pi.set_xlabel("Iteration")
@@ -329,25 +341,20 @@ def plot_bj_value_surface(
 # ── Phase 3: CartPole figures ─────────────────────────────────────────────────
 
 
-def plot_cp_convergence(
+def plot_cp_vi_convergence(
     metrics_dir: Path,
-    algo: str,
-    title: str,
-    delta: float,
     grid_n_states: dict[str, int],
     grid_names: list[str],
     fig_dir: Path,
 ) -> Path:
-    """ΔV vs iteration for one algorithm, one curve per grid. Reads from CSV.
+    """VI residual vs iteration. All grids overlap — one representative curve shown
+    with an annotation confirming identical sweep counts across grids.
 
     Args:
-        metrics_dir:    directory containing vi_convergence.csv / pi_convergence.csv
-        algo:           "vi" or "pi"
-        title:          figure title
-        delta:          convergence threshold (VI_DELTA or PI_DELTA) for the δ line
-        grid_n_states:  {"coarse": N, "default": N, "fine": N} for legend labels
-        grid_names:     canonical grid order from the checkpoint (not source constant)
-        fig_dir:        output directory
+        metrics_dir:   directory containing vi_convergence.csv
+        grid_n_states: {"coarse": N, ...} for the annotation
+        grid_names:    canonical grid order from the checkpoint
+        fig_dir:       output directory
     """
     import matplotlib
 
@@ -355,134 +362,265 @@ def plot_cp_convergence(
     import matplotlib.pyplot as plt
     import pandas as pd
 
-    df = pd.read_csv(metrics_dir / f"{algo}_convergence.csv")
+    vi_df = pd.read_csv(metrics_dir / "vi_convergence.csv")
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    for grid_name in grid_names:
-        sub = df[df["grid"] == grid_name]
-        n = grid_n_states.get(grid_name, "?")
-        ax.semilogy(
-            sub["iteration"],
-            sub["delta_v"],
-            label=f"{grid_name} ({n} states)",
-            color=CP_GRID_COLORS[grid_name],
-            linewidth=1.5,
-        )
+    # Use "default" as the representative; fall back to first grid if absent.
+    rep = "default" if "default" in grid_names else grid_names[0]
+    sub = vi_df[vi_df["grid"] == rep]
+    sweep_count = int(sub["iteration"].iloc[-1])
 
-    ax.axhline(
-        delta,
-        color=COLOR_DELTA_LINE,
-        linewidth=1,
-        linestyle="--",
-        label=f"δ = {delta:.0e}",
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.semilogy(
+        sub["iteration"],
+        sub["delta_v"],
+        color=CP_GRID_COLORS[rep],
+        linewidth=2,
+        label=f"{rep} ({grid_n_states.get(rep, '?')} states)",
     )
+
+    # Annotation: all grids produce the same convergence curve
+    state_counts = ", ".join(f"{g}: {grid_n_states.get(g, '?')}" for g in grid_names)
+    ax.text(
+        0.97,
+        0.97,
+        f"All grids converge in {sweep_count} sweeps\n({state_counts})",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=8,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
+
     ax.set_xlabel("Iteration")
     ax.set_ylabel("max |ΔV| (log scale)")
-    ax.set_title(title)
-    ax.legend()
+    ax.set_title("Value Iteration Convergence — CartPole", fontweight="bold")
+    ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    filename = f"cartpole_{algo}_convergence.png"
-    out = fig_dir / filename
+    out = fig_dir / "cartpole_vi_convergence.png"
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
     return out
 
 
-def plot_cp_discretization_study(
+def plot_cp_pi_convergence(
+    metrics_dir: Path,
+    grid_n_states: dict[str, int],
+    grid_names: list[str],
+    fig_dir: Path,
+) -> Path:
+    """PI policy changes vs iteration, one curve per grid.
+
+    Non-zero policy-change iterations plotted on log y; dashed vline marks the
+    stable iteration (policy_changes == 0) for each grid.
+
+    Args:
+        metrics_dir:   directory containing pi_convergence.csv
+        grid_n_states: {"coarse": N, ...} for legend labels
+        grid_names:    canonical grid order from the checkpoint
+        fig_dir:       output directory
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    pi_df = pd.read_csv(metrics_dir / "pi_convergence.csv")
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for grid_name in grid_names:
+        sub = pi_df[pi_df["grid"] == grid_name].copy()
+        n = grid_n_states.get(grid_name, "?")
+        color = CP_GRID_COLORS[grid_name]
+        non_zero = sub[sub["policy_changes"] > 0]
+        ax.semilogy(
+            non_zero["iteration"],
+            non_zero["policy_changes"],
+            label=f"{grid_name} ({n} states)",
+            color=color,
+            linewidth=1.5,
+            marker="o",
+            markersize=4,
+        )
+        stable_iter = int(sub["iteration"].iloc[-1])
+        ax.axvline(
+            stable_iter,
+            color=color,
+            linewidth=0.9,
+            linestyle="--",
+            alpha=0.75,
+        )
+
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Policy changes (log scale)")
+    ax.set_title("Policy Iteration Convergence — CartPole", fontweight="bold")
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    out = fig_dir / "cartpole_pi_convergence.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_cp_mean_episode_length(
     metrics_dir: Path,
     grid_names: list[str],
     fig_dir: Path,
 ) -> Path:
-    """3-panel discretization study. Reads from discretization_study.csv.
-
-    Panels: mean episode length vs grid, wall-clock vs grid, coverage % vs grid.
+    """Grouped bar chart: mean episode length by grid, VI vs PI (± IQR).
 
     Args:
         metrics_dir:  directory containing discretization_study.csv
-        grid_names:   canonical grid order from the checkpoint (not source constant)
+        grid_names:   canonical grid order from the checkpoint
         fig_dir:      output directory
     """
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import numpy as np
     import pandas as pd
 
     df = pd.read_csv(metrics_dir / "discretization_study.csv")
-    x = list(range(len(grid_names)))
+    x = np.arange(len(grid_names))
+    width = 0.35
 
-    fig, axes = plt.subplots(1, 3, figsize=(13, 4))
-
-    # Panel 1: policy quality
-    for algo in ["VI", "PI"]:
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for offset, algo in zip([-width / 2, width / 2], ["VI", "PI"]):
         sub = df[df["algorithm"] == algo].set_index("grid")
         means = [sub.loc[g, "mean_episode_len"] for g in grid_names]
         iqrs = [sub.loc[g, "eval_episode_len_iqr"] for g in grid_names]
-        axes[0].errorbar(
-            x,
+        ax.bar(
+            x + offset,
             means,
+            width,
             yerr=iqrs,
             label=algo,
-            marker="o",
-            capsize=4,
-            linewidth=1.5,
             color=ALGO_COLORS[algo],
+            alpha=0.85,
+            capsize=4,
+            error_kw={"elinewidth": 1.2},
         )
-    axes[0].set_xticks(x)
-    axes[0].set_xticklabels(grid_names)
-    axes[0].set_xlabel("Grid")
-    axes[0].set_ylabel("Mean episode length")
-    axes[0].set_title("Policy quality vs grid")
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
 
-    # Panel 2: planning wall-clock
-    for algo in ["VI", "PI"]:
+    ax.set_xticks(x)
+    ax.set_xticklabels(grid_names)
+    ax.set_xlabel("Grid")
+    ax.set_ylabel("Mean episode length")
+    ax.set_title("Mean Episode Length by Grid — CartPole", fontweight="bold")
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis="y")
+    plt.tight_layout()
+    out = fig_dir / "cartpole_mean_episode_length_by_grid.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_cp_wall_clock(
+    metrics_dir: Path,
+    grid_names: list[str],
+    fig_dir: Path,
+) -> Path:
+    """Grouped bar chart: planning wall-clock by grid, VI vs PI.
+
+    Args:
+        metrics_dir:  directory containing discretization_study.csv
+        grid_names:   canonical grid order from the checkpoint
+        fig_dir:      output directory
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "discretization_study.csv")
+    x = np.arange(len(grid_names))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for offset, algo in zip([-width / 2, width / 2], ["VI", "PI"]):
         sub = df[df["algorithm"] == algo].set_index("grid")
         walls = [sub.loc[g, "wall_clock_s"] for g in grid_names]
-        axes[1].plot(
-            x, walls, label=algo, marker="o", linewidth=1.5, color=ALGO_COLORS[algo]
+        ax.bar(
+            x + offset,
+            walls,
+            width,
+            label=algo,
+            color=ALGO_COLORS[algo],
+            alpha=0.85,
         )
-    axes[1].set_xticks(x)
-    axes[1].set_xticklabels(grid_names)
-    axes[1].set_xlabel("Grid")
-    axes[1].set_ylabel("Planning wall-clock (s)")
-    axes[1].set_title("Planning time vs grid")
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
 
-    # Panel 3: model coverage
-    # Use VI rows (coverage_pct is per-grid, same for both algorithms)
-    sub_vi = df[df["algorithm"] == "VI"].set_index("grid")
-    coverages = [sub_vi.loc[g, "coverage_pct"] * 100 for g in grid_names]
-    bars = axes[2].bar(
+    ax.set_xticks(x)
+    ax.set_xticklabels(grid_names)
+    ax.set_xlabel("Grid")
+    ax.set_ylabel("Planning wall-clock (s)")
+    ax.set_title("Planning Wall-Clock by Grid — CartPole", fontweight="bold")
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis="y")
+    plt.tight_layout()
+    out = fig_dir / "cartpole_wall_clock_by_grid.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_cp_model_coverage(
+    metrics_dir: Path,
+    grid_names: list[str],
+    fig_dir: Path,
+) -> Path:
+    """Coverage % by grid — single bar chart with a coverage-specific palette
+    distinct from VI/PI algorithm colors and CP_GRID_COLORS.
+
+    Args:
+        metrics_dir:  directory containing discretization_study.csv
+        grid_names:   canonical grid order from the checkpoint
+        fig_dir:      output directory
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+
+    df = pd.read_csv(metrics_dir / "discretization_study.csv")
+    # coverage_pct is per-grid (same for VI and PI); use VI rows
+    sub = df[df["algorithm"] == "VI"].set_index("grid")
+    coverages = [sub.loc[g, "coverage_pct"] * 100 for g in grid_names]
+    x = np.arange(len(grid_names))
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    bars = ax.bar(
         x,
         coverages,
         color=[CP_GRID_COLORS[g] for g in grid_names],
-        alpha=0.85,
+        alpha=0.9,
         edgecolor="white",
     )
     for bar, val in zip(bars, coverages):
-        axes[2].text(
+        ax.text(
             bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 0.5,
+            bar.get_height() + 0.8,
             f"{val:.1f}%",
             ha="center",
             va="bottom",
             fontsize=9,
         )
-    axes[2].set_xticks(x)
-    axes[2].set_xticklabels(grid_names)
-    axes[2].set_xlabel("Grid")
-    axes[2].set_ylabel("Coverage (%)")
-    axes[2].set_title("Model coverage vs grid")
-    axes[2].set_ylim(0, 110)
-    axes[2].grid(True, alpha=0.3, axis="y")
 
-    fig.suptitle("CartPole Discretization Study", fontsize=11, fontweight="bold")
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    out = fig_dir / "cartpole_discretization_study.png"
+    ax.set_xticks(x)
+    ax.set_xticklabels(grid_names)
+    ax.set_xlabel("Grid")
+    ax.set_ylabel("Coverage (%)")
+    ax.set_title("Model Coverage by Grid — CartPole", fontweight="bold")
+    ax.set_ylim(0, 115)
+    ax.grid(True, alpha=0.3, axis="y")
+    plt.tight_layout()
+    out = fig_dir / "cartpole_model_coverage_by_grid.png"
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
     return out
@@ -530,7 +668,7 @@ def plot_cp_policy_slice(
         axis=1,
     )
 
-    cmap = mcolors.ListedColormap([ALGO_COLORS["VI"], ALGO_COLORS["PI"]])
+    cmap = mcolors.ListedColormap([CP_ACTION_COLORS["left"], CP_ACTION_COLORS["right"]])
 
     n_grids = len(grid_names)
     fig, axes = plt.subplots(2, n_grids, figsize=(4 * n_grids, 7))
@@ -586,8 +724,8 @@ def plot_cp_policy_slice(
                 ax.set_xticklabels([])
 
     legend_patches = [
-        mpatches.Patch(color=ALGO_COLORS["VI"], label="Push left (0)"),
-        mpatches.Patch(color=ALGO_COLORS["PI"], label="Push right (1)"),
+        mpatches.Patch(color=CP_ACTION_COLORS["left"], label="Push left (0)"),
+        mpatches.Patch(color=CP_ACTION_COLORS["right"], label="Push right (1)"),
     ]
     fig.legend(
         handles=legend_patches,

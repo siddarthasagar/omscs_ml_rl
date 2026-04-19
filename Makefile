@@ -4,6 +4,7 @@ PY=uv run python
 
 .PHONY: help setup dev upgrade run lint format test clean \
         phase1 phase2 phase3 phase4 phase5 phase6 phase7 phase8 \
+        viz \
         gate1 gate2 gates pipeline overnight
 
 help: ## Show available targets
@@ -80,6 +81,12 @@ phase8: ## Report tables + repro artifacts
 	@test -f scripts/run_phase_8_report_tables.py || \
 		{ echo "ERROR: scripts/run_phase_8_report_tables.py not implemented yet"; exit 1; }
 	bash ml_run.sh "uv run python scripts/run_phase_8_report_tables.py"
+
+# ── Visualization-only (no recomputation) ────────────────────────────────────
+
+viz: ## Re-render all phase figures (wipes figures dir first)
+	rm -rf artifacts/figures
+	$(PY) scripts/visualize_all.py
 
 # ── Gates (pytest) ────────────────────────────────────────────────────────────
 

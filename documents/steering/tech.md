@@ -74,10 +74,47 @@ Plotting should be dynamic from saved metrics and metadata wherever possible:
 The plotting layer should keep only fixed semantic defaults centralized in `src/utils/plotting.py`:
 
 - algorithm colors
+- grid colors
 - action colors
+- reference and annotation colors
 - environment axis ordering
 - DPI and readable font defaults
 - environment-defined markers such as CartPole terminal thresholds
+
+### Color Semantics
+
+Color should represent one primary semantic layer at a time. The plotting layer should keep that contract explicit with named constants.
+
+Recommended constants in `src/utils/plotting.py`:
+
+- `ALGO_COLORS = {"VI": "#4C72B0", "PI": "#8C564B"}`
+- `CP_GRID_COLORS = {"coarse": "#BAB0AC", "default": "#76B7B2", "fine": "#B07AA1"}`
+- `BJ_ACTION_COLORS` and `CP_ACTION_COLORS` as action-specific palettes separate from algorithms and grids
+- `REFERENCE_COLORS` for thresholds and convergence markers
+
+Rules:
+
+- Reserve blue and brown for VI and PI across the repository.
+- Use `CP_GRID_COLORS` whenever marks represent `coarse`, `default`, and `fine`, including coverage-by-grid figures.
+- Use action colors only for policy maps and action-slice figures; action colors must not imply algorithm identity.
+- Threshold lines, stable-iteration markers, and other annotations should use muted reference colors rather than algorithm or grid colors.
+
+## Report-Facing Figure Design
+
+Report-facing figures should maximize explanatory value, not maximize the amount of data forced into one image.
+
+Guidelines:
+
+- Convergence figures are diagnostic evidence; they do not need to carry every comparison result by themselves.
+- When two algorithms converge in different natural objects, prefer separate figures over forced composite comparisons.
+- When multiple traces are numerically or visually indistinguishable, prefer a representative curve plus an explicit annotation over a low-value overlay.
+- Use standalone tradeoff charts or compact tables for exact wall-clock, final-performance, and agreement comparisons that are clearer outside the convergence figure.
+
+Applied example for DP phases:
+
+- VI may be best shown with `delta_v` vs iteration.
+- PI may be best shown with policy changes vs iteration.
+- Grid tradeoffs such as episode length, wall-clock, and model coverage may be clearer as separate categorical charts than as one composite panel.
 
 ## Reporting Conventions
 

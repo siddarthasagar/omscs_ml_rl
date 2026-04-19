@@ -15,6 +15,16 @@ All phases implemented or refactored from this point forward follow the artifact
 
 This is the target design for the Phase 1–3 refactor and the expected template for Phases 4+.
 
+## Plot Palette Contract
+
+Plotting should use one centralized semantic palette registry in `src/utils/plotting.py` rather than choosing colors figure by figure.
+
+- `ALGO_COLORS`: VI is blue `#4C72B0`, PI is brown `#8C564B`
+- `CP_GRID_COLORS`: coarse is muted gray `#BAB0AC`, default is muted teal `#76B7B2`, fine is muted mauve `#B07AA1`
+- action maps use their own action palette and do not reuse algorithm colors
+
+Interpretation rule: use algorithm colors for VI-vs-PI comparisons, use grid colors for coarse/default/fine comparisons, and use action colors only when the plotted categories are actions.
+
 ---
 
 ## Hypothesis (state before experiments begin)
@@ -164,9 +174,14 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 - Separate coverage diagnostics per grid so weak performance can be attributed correctly (binning vs model sparsity)
 
 **Figures → `artifacts/figures/phase3_vi_pi_cartpole/`:**
-- `cartpole_vi_convergence.png` — ΔV vs iteration, one curve per grid (planning axis)
-- `cartpole_pi_convergence.png` — same for PI
-- `cartpole_discretization_study.png` — 3-panel: mean episode length, wall-clock, and coverage % vs grid size
+- `cartpole_vi_convergence.png` — VI residual vs iteration using one representative curve; annotate that coarse/default/fine traces overlap and all converge in 1376 sweeps
+- `cartpole_pi_convergence.png` — PI policy changes vs iteration, one curve per grid with stable-iteration markers
+- `cartpole_mean_episode_length_by_grid.png` — grouped bar chart: mean episode length by grid, VI vs PI
+- `cartpole_wall_clock_by_grid.png` — grouped bar chart: planning wall-clock by grid, VI vs PI
+- `cartpole_model_coverage_by_grid.png` — coverage % by grid using the standard grid palette: coarse gray, default teal, fine mauve
+- `cartpole_policy_slice.png` — optional qualitative figure if the report discusses where VI and PI differ in state space
+
+**Report comparison note:** use the separate convergence figures for algorithmic behavior, use the three standalone grid charts for discretization tradeoffs, and use a compact summary table for exact wall-clock, final-performance, and policy-agreement values.
 
 **Metrics → `artifacts/metrics/phase3_vi_pi_cartpole/`:**
 - `vi_convergence.csv` — grid, iteration, delta_v, wall_clock_s
@@ -339,8 +354,8 @@ Regime assignment is fixed and must not be mixed across charts:
 |---|---|---|---|
 | MDP descriptions + hypothesis | §3.1, §4 | — | — |
 | Methods: VI, PI, SARSA, Q-Learning | §4 | — | — |
-| CartPole discretization strategy | §4 | `cartpole_discretization_study.png` | bin edges in `tab_hyperparams` |
-| VI vs PI results | §4 analysis | VI/PI convergence + policy heatmaps | `tab_phase2`, `tab_phase3` |
+| CartPole discretization strategy | §4 | `cartpole_mean_episode_length_by_grid.png`, `cartpole_wall_clock_by_grid.png`, `cartpole_model_coverage_by_grid.png` | bin edges in `tab_hyperparams` |
+| VI vs PI results | §4 analysis | Blackjack convergence + Blackjack policy heatmap + `cartpole_vi_convergence.png` + `cartpole_pi_convergence.png` | `tab_phase2`, `tab_phase3` |
 | SARSA vs Q-Learning results | §4 analysis | learning curves (controlled + tuned overlays), hyperparam sensitivity | `tab_phase4`, `tab_phase5` |
 | Cross-method comparison | §4 analysis | planning efficiency, learning efficiency (controlled), stability (controlled), wall-clock, final performance (tuned) | `tab_phase6` |
 | Hyperparameter validation | FAQ req | hyperparam sensitivity | `tab_hyperparams` |
@@ -403,9 +418,12 @@ Regime assignment is fixed and must not be mixed across charts:
 - [ ] Hyperparameter sensitivity
 
 ### CartPole:
-- [ ] VI: ΔV vs iteration per grid (single trace per grid)
-- [ ] PI: ΔV vs iteration per grid (single trace per grid)
-- [ ] Discretization study: 3-panel (episode length + wall-clock + coverage % vs grid)
+- [ ] VI convergence: representative ΔV vs iteration curve with note that all grids overlap and share the same 1376-sweep convergence
+- [ ] PI convergence: policy changes vs iteration per grid with stable-iteration markers
+- [ ] Mean episode length by grid: grouped bar chart (VI vs PI)
+- [ ] Planning wall-clock by grid: grouped bar chart (VI vs PI)
+- [ ] Model coverage by grid: single bar chart with the standard coarse/default/fine grid palette
+- [ ] Policy slice (optional): qualitative VI vs PI state-space view
 - [ ] SARSA: episode length mean ± IQR vs episodes
 - [ ] Q-Learning: episode length mean ± IQR vs episodes
 - [ ] SARSA vs Q-Learning — controlled (shared exploration schedule)

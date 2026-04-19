@@ -12,9 +12,12 @@ Outputs:
     hp_validation.csv
     plot_cp_grids.npz          ← plot-support: per-grid policy arrays
   artifacts/figures/phase3_vi_pi_cartpole/
-    cartpole_vi_convergence.png, cartpole_pi_convergence.png
-    cartpole_discretization_study.png
-    cartpole_policy_slice.png
+    cartpole_vi_convergence.png              ← VI ΔV vs iteration (representative curve)
+    cartpole_pi_convergence.png              ← PI policy changes vs iteration, per grid
+    cartpole_mean_episode_length_by_grid.png ← grouped bar: mean episode length, VI vs PI
+    cartpole_wall_clock_by_grid.png          ← grouped bar: planning wall-clock, VI vs PI
+    cartpole_model_coverage_by_grid.png      ← coverage % by grid
+    cartpole_policy_slice.png                ← optional: (θ, θ̇) decision-boundary slice
   artifacts/metadata/phase3.json
   artifacts/logs/phase3.log
 
@@ -57,9 +60,12 @@ from src.utils.phase_artifacts import (
     write_checkpoint_json,
 )
 from src.utils.plotting import (
-    plot_cp_convergence,
-    plot_cp_discretization_study,
+    plot_cp_mean_episode_length,
+    plot_cp_model_coverage,
+    plot_cp_pi_convergence,
     plot_cp_policy_slice,
+    plot_cp_vi_convergence,
+    plot_cp_wall_clock,
 )
 
 logger = configure_logger("phase3")
@@ -553,31 +559,23 @@ def visualize(checkpoint_path: Path) -> list[Path]:
     logger.info("=== Phase 3 Figures ===")
     figs: list[Path] = []
 
-    out = plot_cp_convergence(
-        metrics_dir,
-        "vi",
-        title="Value Iteration Convergence — CartPole (by grid)",
-        delta=cfg_snap["vi_delta"],
-        grid_n_states=grid_n_states,
-        grid_names=grid_names,
-        fig_dir=figures_dir,
-    )
+    out = plot_cp_vi_convergence(metrics_dir, grid_n_states, grid_names, figures_dir)
     logger.info("Saved → %s", out)
     figs.append(out)
 
-    out = plot_cp_convergence(
-        metrics_dir,
-        "pi",
-        title="Policy Iteration Convergence — CartPole (by grid)",
-        delta=cfg_snap["pi_delta"],
-        grid_n_states=grid_n_states,
-        grid_names=grid_names,
-        fig_dir=figures_dir,
-    )
+    out = plot_cp_pi_convergence(metrics_dir, grid_n_states, grid_names, figures_dir)
     logger.info("Saved → %s", out)
     figs.append(out)
 
-    out = plot_cp_discretization_study(metrics_dir, grid_names, figures_dir)
+    out = plot_cp_mean_episode_length(metrics_dir, grid_names, figures_dir)
+    logger.info("Saved → %s", out)
+    figs.append(out)
+
+    out = plot_cp_wall_clock(metrics_dir, grid_names, figures_dir)
+    logger.info("Saved → %s", out)
+    figs.append(out)
+
+    out = plot_cp_model_coverage(metrics_dir, grid_names, figures_dir)
     logger.info("Saved → %s", out)
     figs.append(out)
 
