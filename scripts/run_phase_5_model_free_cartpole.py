@@ -62,10 +62,10 @@ from src.config import (
     CP_HP_STAGE3_EPISODES,
     CP_HP_STAGE3_TOP_K,
     CP_N_ACTIONS,
+    CP_RL_CONVERGENCE_DELTA,
     CP_TRAIN_EPISODES,
     PHASE5_FINAL_TRAIN_MAX_WORKERS,
     PHASE5_HP_SEARCH_MAX_WORKERS,
-    RL_CONVERGENCE_DELTA,
     RL_CONVERGENCE_M,
     RL_CONVERGENCE_WINDOW,
     SEEDS,
@@ -145,7 +145,7 @@ def _build_mf_config(
         eps_decay_steps=hp["eps_decay_steps"],
         gamma=hp.get("gamma", _HP_GAMMA),
         convergence_window=RL_CONVERGENCE_WINDOW,
-        convergence_delta=0.0 if disable_early_stopping else RL_CONVERGENCE_DELTA,
+        convergence_delta=0.0 if disable_early_stopping else CP_RL_CONVERGENCE_DELTA,
         convergence_m=RL_CONVERGENCE_M,
     )
     return SarsaConfig(**kwargs) if algo_label == "sarsa" else QLearningConfig(**kwargs)
@@ -311,7 +311,7 @@ def _run_disc_job(job: dict) -> dict:
         if check_convergence(
             wm_list[: k + 1],
             window=RL_CONVERGENCE_WINDOW,
-            delta=RL_CONVERGENCE_DELTA,
+            delta=CP_RL_CONVERGENCE_DELTA,
             m_consec=RL_CONVERGENCE_M,
         ):
             window_eps = [
@@ -596,12 +596,24 @@ def run() -> Path:
     # Default grid config (None → CartPoleDiscretizer uses CARTPOLE_* defaults)
     default_grid_config = None
 
-    # ── HP Search ─────────────────────────────────────────────────────────────
+    # ── HP Search — SARSA and Q-Learning run concurrently ────────────────────
+    # The two algorithm searches are fully independent: each manages its own
+    # Stage 1 → Stage 2 → Stage 3 sequential promotion internally.
+    # ThreadPoolExecutor lets each algo's ProcessPoolExecutor run in parallel.
     log.info("=== Phase 5 HP Search (multi-seed scoring over %d seeds) ===", len(SEEDS))
     t_hp_start = time.perf_counter()
 
-    sarsa_best_hp, sarsa_hp_rows = _hp_search("sarsa", grid_config=default_grid_config)
-    ql_best_hp, ql_hp_rows = _hp_search("qlearning", grid_config=default_grid_config)
+    from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
+
+    with _ThreadPoolExecutor(max_workers=2) as _thread_pool:
+        _sarsa_fut = _thread_pool.submit(
+            _hp_search, "sarsa", grid_config=default_grid_config
+        )
+        _ql_fut = _thread_pool.submit(
+            _hp_search, "qlearning", grid_config=default_grid_config
+        )
+        sarsa_best_hp, sarsa_hp_rows = _sarsa_fut.result()
+        ql_best_hp, ql_hp_rows = _ql_fut.result()
 
     hp_df = pd.DataFrame(sarsa_hp_rows + ql_hp_rows)
     hp_df.to_csv(paths.metrics_dir / "mf_hp_search.csv", index=False)
@@ -726,7 +738,7 @@ def run() -> Path:
             if check_convergence(
                 wm_list[: k + 1],
                 window=RL_CONVERGENCE_WINDOW,
-                delta=RL_CONVERGENCE_DELTA,
+                delta=CP_RL_CONVERGENCE_DELTA,
                 m_consec=RL_CONVERGENCE_M,
             ):
                 conv_ep = int(result["curve_episode"][k])
@@ -772,6 +784,21 @@ def run() -> Path:
                         ),
                     }
                 )
+            conv = sub["convergence_episode"].dropna()
+            summary_rows.append(
+                {
+                    "algorithm": algo,
+                    "regime": regime,
+                    "metric": "convergence_episode",
+                    "mean": round(float(conv.mean()), 1) if len(conv) else None,
+                    "std": round(float(conv.std()), 1) if len(conv) else None,
+                    "iqr": round(
+                        float(np.percentile(conv, 75) - np.percentile(conv, 25)), 1
+                    )
+                    if len(conv)
+                    else None,
+                }
+            )
     pd.DataFrame(summary_rows).to_csv(
         paths.metrics_dir / "mf_eval_summary.csv", index=False
     )

@@ -200,11 +200,9 @@ A strategy profile that is a Nash equilibrium in **every subgame** (including of
 ### Backward Induction
 To find SPE: solve the last stage first, then work backwards.
 
-```
-Step 1: Solve the final subgame → find its Nash equilibrium.
-Step 2: Substitute that equilibrium payoff into the prior stage.
-Step 3: Solve the prior stage given those expected payoffs.
-```
+1. Solve the final subgame → find its Nash equilibrium.
+2. Substitute that equilibrium payoff into the prior stage.
+3. Solve the prior stage given those expected payoffs.
 
 ### Credible Threats
 A threat is credible only if the threatening player would actually benefit from carrying it out (SPE condition). Non-credible threats don't deter rational opponents.
@@ -222,7 +220,7 @@ Ask: "Is there any outcome where both players gain or both lose?"
 $$V_{new}(s) = \sum_a \pi(a|s) \big[ R(s,a) + \gamma \times V_{old}(\text{next\_state}(s,a)) \big]$$
 
 ### Epsilon-Greedy Probabilities
-$$P(\text{greedy}) = \frac{1 - \varepsilon}{k_{greedy}} + frac{\varepsilon}{k_{total}}$$
+$$P(\text{greedy}) = \frac{1 - \varepsilon}{k_{greedy}} + \frac{\varepsilon}{k_{total}}$$
 $$P(\text{non-greedy}) = \frac{\varepsilon}{k_{total}}$$
 
 ### Minimax (pure strategy)

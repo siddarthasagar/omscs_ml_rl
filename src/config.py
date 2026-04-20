@@ -182,8 +182,14 @@ CP_EVAL_EPISODES_HP: int = 50
 # These are starting-point choices for model-free learning phases.
 # Will be validated in dedicated HP sweeps (phases 4+).
 RL_CONVERGENCE_WINDOW: int = 100  # W: window size in episodes
-RL_CONVERGENCE_DELTA: float = 0.01  # minimum improvement between consecutive windows
+RL_CONVERGENCE_DELTA: float = (
+    0.01  # minimum improvement between consecutive windows (Blackjack: bounded [-1,1])
+)
 RL_CONVERGENCE_M: int = 3  # consecutive window-pairs below delta → converged
+
+# CartPole-specific convergence delta: episode lengths are in [1, 500], so the
+# equivalent 2% tolerance is 10.0 (vs 0.01 on a [-1,1] Blackjack return signal).
+CP_RL_CONVERGENCE_DELTA: float = 10.0
 
 RL_GAMMA: float = 0.99
 RL_ALPHA_START: float = 0.5

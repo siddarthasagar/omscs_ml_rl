@@ -83,7 +83,7 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 
 **Wall-clock accounting rule:** model-free bars represent the **controlled-regime final reporting run** (5 seeds × full episode budget under the fixed baseline schedule). HP search cost is reported separately as a one-time overhead note in the chart caption — same pattern as CartPole model-build overhead. Tuned-regime run cost is not included in the bar.
 
-**Model-free convergence rule:** `convergence_episode` = first episode E where `|mean_return(E-W:E) − mean_return(E-2W:E-W)| < RL_CONVERGENCE_DELTA` for `RL_CONVERGENCE_M` consecutive window-pairs. Constants in `config.py`: `W=100`, `RL_CONVERGENCE_DELTA=0.01`, `RL_CONVERGENCE_M=3`. Applied per-seed; `convergence_episode_iqr` is the IQR of per-seed convergence episodes across the 5 seeds.
+**Model-free convergence rule:** `convergence_episode` = first episode E where `|mean_return(E-W:E) − mean_return(E-2W:E-W)| < delta` for `RL_CONVERGENCE_M` consecutive window-pairs. Constants in `config.py`: `W=100`, `RL_CONVERGENCE_M=3`. Delta is signal-scaled per environment: `RL_CONVERGENCE_DELTA=0.01` for Blackjack (return in [-1,1]); `CP_RL_CONVERGENCE_DELTA=10.0` for CartPole (episode length in [1,500], ~2% of range). Applied per-seed; `convergence_episode_iqr` is the IQR of per-seed convergence episodes across the 5 seeds.
 
 **Artifact/log isolation rule:** canonical phase artifacts under `artifacts/{logs,metrics,figures,metadata}/` are reserved for real workspace experiment runs. Smoke tests, pytest lifecycle tests, temporary-budget validations, and debug runs should write to isolated temporary locations or use distinct run identifiers so they cannot be confused with final experiment evidence.
 
@@ -273,7 +273,7 @@ Five separate comparison outputs — never merged into one chart. Regime is fixe
 - `mf_learning_curves.csv` — algorithm, seed, regime, episode, window_mean
 - `mf_hp_search.csv` — algorithm, stage, alpha_start, alpha_end, alpha_decay_steps, eps_decay_steps, gamma, mean_episode_len, mean_episode_len_std
 - `mf_eval_per_seed.csv` — algorithm, seed, regime, mean_episode_len, final_window_return, convergence_episode, train_wall_clock_s
-- `mf_eval_summary.csv` — algorithm, regime, metric, mean, std, iqr (long-format)
+- `mf_eval_summary.csv` — algorithm, regime, metric, mean, std, iqr (long-format; metrics: mean_episode_len, final_window_return, convergence_episode)
 - `mf_discretization.csv` — grid, algorithm, seed, final_mean_len, convergence_episode (`regime` always `tuned`)
 
 **Output → `artifacts/metadata/phase5.json`**
@@ -491,7 +491,8 @@ CARTPOLE_MODEL_MIN_VISITS: int = 5
 
 # Model-free convergence criterion (running-mean plateau)
 RL_CONVERGENCE_WINDOW: int = 100       # W: window size in episodes
-RL_CONVERGENCE_DELTA: float = 0.01    # minimum improvement between consecutive windows
+RL_CONVERGENCE_DELTA: float = 0.01    # delta for Blackjack (return in [-1,1])
+CP_RL_CONVERGENCE_DELTA: float = 10.0  # delta for CartPole (episode length in [1,500], ~2% of range)
 RL_CONVERGENCE_M: int = 3             # number of consecutive window-pairs below delta
 
 # Model-free defaults (starting point for staged HP search)
