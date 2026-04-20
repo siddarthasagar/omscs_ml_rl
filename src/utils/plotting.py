@@ -1221,3 +1221,412 @@ def plot_cp_mf_discretization(
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+# ── Phase 6: Cross-Method Comparison figures ──────────────────────────────────
+
+# Model-free algorithm colors (extend ALGO_COLORS for MF methods)
+_MF_COLORS: dict[str, str] = {
+    "sarsa": "#E377C2",  # pink
+    "qlearning": "#BCBD22",  # yellow-green
+}
+_ALL_METHOD_COLORS: dict[str, str] = {**ALGO_COLORS, **_MF_COLORS}
+_MF_LABELS: dict[str, str] = {"sarsa": "SARSA", "qlearning": "Q-Learning"}
+_ENV_LABELS = {"blackjack": "Blackjack", "cartpole": "CartPole"}
+
+
+def _grouped_bars(
+    ax,
+    groups: list[str],
+    series: dict[str, list[float]],
+    errors: dict[str, list[float]] | None = None,
+    colors: dict[str, str] | None = None,
+    width: float = 0.35,
+) -> None:
+    """Draw grouped bar chart on *ax*.
+
+    Args:
+        groups:  x-axis group labels (e.g. ["Blackjack", "CartPole"])
+        series:  {label: [value_per_group]}
+        errors:  {label: [error_per_group]} — drawn as ±error whiskers
+        colors:  {label: hex} — falls back to matplotlib default cycle
+        width:   total width budget per group (split across series)
+    """
+
+    n_groups = len(groups)
+    n_series = len(series)
+    bar_w = width / n_series
+    x = np.arange(n_groups)
+    offsets = np.linspace(-(width - bar_w) / 2, (width - bar_w) / 2, n_series)
+
+    for offset, (label, vals) in zip(offsets, series.items()):
+        errs = errors.get(label) if errors else None
+        color = (colors or {}).get(label)
+        ax.bar(
+            x + offset,
+            vals,
+            bar_w,
+            label=label,
+            color=color,
+            yerr=errs,
+            capsize=4,
+            error_kw={"elinewidth": 1.2, "ecolor": "#555555"},
+        )
+    ax.set_xticks(x)
+    ax.set_xticklabels(groups)
+
+
+def plot_p6_planning_efficiency(summary: dict, fig_dir: Path) -> Path:
+    """VI vs PI iterations to convergence, both MDPs (two-panel bar chart)."""
+    import matplotlib.pyplot as plt
+
+    data = summary["planning_efficiency"]
+    envs = ["blackjack", "cartpole"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    for ax, env in zip(axes, envs):
+        vi_iters = data[env]["vi"]["iterations"]
+        pi_iters = data[env]["pi"]["iterations"]
+        bars = ax.bar(
+            ["VI", "PI"],
+            [vi_iters, pi_iters],
+            color=[ALGO_COLORS["VI"], ALGO_COLORS["PI"]],
+            width=0.5,
+        )
+        for bar, val in zip(bars, [vi_iters, pi_iters]):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + max(vi_iters, pi_iters) * 0.02,
+                str(int(val)),
+                ha="center",
+                va="bottom",
+                fontsize=9,
+            )
+        ax.set_title(_ENV_LABELS[env])
+        ax.set_ylabel("Iterations to convergence")
+        ax.set_ylim(0, max(vi_iters, pi_iters) * 1.25)
+        ax.grid(True, alpha=0.3, axis="y")
+
+    fig.suptitle("Planning Efficiency — VI vs PI", fontsize=12)
+    plt.tight_layout()
+    out = fig_dir / "planning_efficiency_comparison.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_p6_learning_efficiency(summary: dict, fig_dir: Path) -> Path:
+    """SARSA vs Q-Learning episodes to convergence, controlled regime."""
+    import matplotlib.pyplot as plt
+
+    data = summary["learning_efficiency"]
+    envs = ["blackjack", "cartpole"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(9, 4))
+    for ax, env in zip(axes, envs):
+        algos = ["sarsa", "qlearning"]
+        means = [
+            v
+            if (v := data[env][a]["mean_convergence_episode"]) is not None
+            else float("nan")
+            for a in algos
+        ]
+        iqrs = [
+            (v / 2)
+            if (v := data[env][a]["convergence_episode_iqr"]) is not None
+            else float("nan")
+            for a in algos
+        ]
+        labels = [_MF_LABELS[a] for a in algos]
+        colors = [_MF_COLORS[a] for a in algos]
+
+        bars = ax.bar(
+            labels,
+            means,
+            color=colors,
+            width=0.5,
+            yerr=iqrs,
+            capsize=5,
+            error_kw={"elinewidth": 1.2, "ecolor": "#555555"},
+        )
+        finite_means = [v for v in means if v == v]
+        max_mean = max(finite_means) if finite_means else 0
+        for bar, val in zip(bars, means):
+            if val == val and val:  # skip NaN and zero
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + max_mean * 0.02,
+                    f"{int(val):,}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                )
+        ax.set_title(_ENV_LABELS[env])
+        ax.set_ylabel("Episodes to convergence (controlled)")
+        ax.grid(True, alpha=0.3, axis="y")
+
+    fig.suptitle("Learning Efficiency — Controlled Regime", fontsize=12)
+    plt.tight_layout()
+    out = fig_dir / "learning_efficiency_comparison.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_p6_stability(summary: dict, fig_dir: Path) -> Path:
+    """SARSA vs Q-Learning stability metrics, controlled regime.
+
+    Two subplots per MDP: final_window_iqr and convergence_episode_iqr.
+    """
+    import matplotlib.pyplot as plt
+
+    data = summary["stability"]
+    envs = ["blackjack", "cartpole"]
+    algos = ["sarsa", "qlearning"]
+
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+    metric_labels = {
+        "final_window_iqr": "Final-window IQR\n(return stability)",
+        "convergence_episode_iqr": "Convergence-episode IQR\n(speed stability)",
+    }
+
+    for col, env in enumerate(envs):
+        for row, (metric, ylabel) in enumerate(metric_labels.items()):
+            ax = axes[row][col]
+            vals = [
+                v if (v := data[env][a][metric]) is not None else float("nan")
+                for a in algos
+            ]
+            labels = [_MF_LABELS[a] for a in algos]
+            colors = [_MF_COLORS[a] for a in algos]
+            bars = ax.bar(labels, vals, color=colors, width=0.5)
+            finite_vals = [v for v in vals if v == v]
+            max_val = max(finite_vals) if finite_vals else 0
+            for bar, val in zip(bars, vals):
+                if val == val and val:  # skip NaN and zero
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2,
+                        bar.get_height() + max_val * 0.02 if max_val else 0.01,
+                        f"{val:.1f}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=8,
+                    )
+            if row == 0:
+                ax.set_title(_ENV_LABELS[env])
+            ax.set_ylabel(ylabel)
+            ax.grid(True, alpha=0.3, axis="y")
+
+    fig.suptitle("Stability — Controlled Regime (lower = more stable)", fontsize=12)
+    plt.tight_layout()
+    out = fig_dir / "stability_comparison.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_p6_wall_clock(summary: dict, fig_dir: Path) -> Path:
+    """Wall-clock comparison — all methods; CartPole DP stacked model-build + planning."""
+    import matplotlib.pyplot as plt
+
+    wc = summary["wall_clock"]
+    methods = ["VI", "PI", "SARSA", "Q-Learning"]
+    colors = [
+        ALGO_COLORS["VI"],
+        ALGO_COLORS["PI"],
+        _MF_COLORS["sarsa"],
+        _MF_COLORS["qlearning"],
+    ]
+
+    bj_times = [
+        wc["blackjack"]["vi"],
+        wc["blackjack"]["pi"],
+        wc["blackjack"]["sarsa"],
+        wc["blackjack"]["qlearning"],
+    ]
+    cp_planning = [
+        wc["cartpole"]["vi_planning_s"],
+        wc["cartpole"]["pi_planning_s"],
+        wc["cartpole"]["sarsa"],
+        wc["cartpole"]["qlearning"],
+    ]
+    # Model-build overhead stacked only on DP bars
+    cp_model_build = [
+        wc["cartpole"]["model_build_s"],
+        wc["cartpole"]["model_build_s"],
+        0.0,
+        0.0,
+    ]
+
+    x = np.arange(len(methods))
+    w = 0.35
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
+    # Blackjack
+    for i, (m, t, c) in enumerate(zip(methods, bj_times, colors)):
+        axes[0].bar(x[i], t, w, color=c, label=m)
+        axes[0].text(
+            x[i],
+            t + max(bj_times) * 0.02,
+            f"{t:.2f}s",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(methods)
+    axes[0].set_title("Blackjack")
+    axes[0].set_ylabel("Wall-clock (s)")
+    axes[0].grid(True, alpha=0.3, axis="y")
+
+    # CartPole — stacked for DP
+    max_cp = max(p + m for p, m in zip(cp_planning, cp_model_build))
+    for i, (m, plan, mbuild, c) in enumerate(
+        zip(methods, cp_planning, cp_model_build, colors)
+    ):
+        axes[1].bar(
+            x[i], mbuild, w, color="#CCCCCC", label="Model build" if i == 0 else None
+        )
+        axes[1].bar(x[i], plan, w, bottom=mbuild, color=c)
+        total = plan + mbuild
+        axes[1].text(
+            x[i],
+            total + max_cp * 0.02,
+            f"{total:.1f}s",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(methods)
+    axes[1].set_title("CartPole (default grid)")
+    axes[1].set_ylabel("Wall-clock (s)")
+    axes[1].grid(True, alpha=0.3, axis="y")
+    axes[1].legend(fontsize=8)
+
+    fig.suptitle(
+        "Wall-Clock — Controlled Regime (model-free) / Planning Run (DP)", fontsize=11
+    )
+    plt.tight_layout()
+    out = fig_dir / "wall_clock_comparison.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_p6_final_performance(summary: dict, fig_dir: Path) -> Path:
+    """Final performance — all methods; model-free from tuned regime."""
+    import matplotlib.pyplot as plt
+
+    fp = summary["final_performance"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
+    # ── Blackjack (mean return, ±IQR/2) ──────────────────────────────────────
+    ax = axes[0]
+    bj_methods = ["VI", "PI", "SARSA", "Q-Learning"]
+    bj_vals = [
+        fp["blackjack"]["vi"]["mean_eval_return"],
+        fp["blackjack"]["pi"]["mean_eval_return"],
+        fp["blackjack"]["sarsa"]["mean_return"],
+        fp["blackjack"]["qlearning"]["mean_return"],
+    ]
+    bj_errs = [
+        fp["blackjack"]["vi"]["eval_return_iqr"] / 2,
+        fp["blackjack"]["pi"]["eval_return_iqr"] / 2,
+        fp["blackjack"]["sarsa"]["iqr_return"] / 2,
+        fp["blackjack"]["qlearning"]["iqr_return"] / 2,
+    ]
+    bj_colors = [
+        ALGO_COLORS["VI"],
+        ALGO_COLORS["PI"],
+        _MF_COLORS["sarsa"],
+        _MF_COLORS["qlearning"],
+    ]
+    x = np.arange(len(bj_methods))
+    bars = ax.bar(
+        x,
+        bj_vals,
+        0.5,
+        color=bj_colors,
+        yerr=bj_errs,
+        capsize=5,
+        error_kw={"elinewidth": 1.2, "ecolor": "#555555"},
+    )
+    for bar, val in zip(bars, bj_vals):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.005,
+            f"{val:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    ax.set_xticks(x)
+    ax.set_xticklabels(bj_methods)
+    ax.set_title("Blackjack")
+    ax.set_ylabel("Mean return ±IQR/2\n(model-free: tuned regime)")
+    ax.grid(True, alpha=0.3, axis="y")
+
+    # ── CartPole (mean episode length, ±IQR/2) ────────────────────────────────
+    ax = axes[1]
+    cp_methods = ["VI", "PI", "SARSA", "Q-Learning"]
+    cp_vals = [
+        fp["cartpole"]["vi"]["mean_episode_len"],
+        fp["cartpole"]["pi"]["mean_episode_len"],
+        fp["cartpole"]["sarsa"]["mean_episode_len"],
+        fp["cartpole"]["qlearning"]["mean_episode_len"],
+    ]
+    cp_errs = [
+        fp["cartpole"]["vi"]["eval_episode_len_iqr"] / 2,
+        fp["cartpole"]["pi"]["eval_episode_len_iqr"] / 2,
+        fp["cartpole"]["sarsa"]["iqr_episode_len"] / 2,
+        fp["cartpole"]["qlearning"]["iqr_episode_len"] / 2,
+    ]
+    cp_colors = [
+        ALGO_COLORS["VI"],
+        ALGO_COLORS["PI"],
+        _MF_COLORS["sarsa"],
+        _MF_COLORS["qlearning"],
+    ]
+    x = np.arange(len(cp_methods))
+    bars = ax.bar(
+        x,
+        cp_vals,
+        0.5,
+        color=cp_colors,
+        yerr=cp_errs,
+        capsize=5,
+        error_kw={"elinewidth": 1.2, "ecolor": "#555555"},
+    )
+    for bar, val in zip(bars, cp_vals):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + max(cp_vals) * 0.02,
+            f"{val:.1f}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    ax.set_xticks(x)
+    ax.set_xticklabels(cp_methods)
+    ax.set_title("CartPole (default grid)")
+    ax.set_ylabel("Mean episode length ±IQR/2\n(model-free: tuned regime)")
+    ax.axhline(
+        500,
+        color=REFERENCE_COLORS["threshold"],
+        linewidth=1,
+        linestyle="--",
+        label="Max (500)",
+    )
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3, axis="y")
+
+    fig.suptitle(
+        "Final Performance — DP: single run · Model-Free: tuned regime", fontsize=11
+    )
+    plt.tight_layout()
+    out = fig_dir / "final_performance_comparison.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out

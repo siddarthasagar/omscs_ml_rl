@@ -273,8 +273,7 @@ def _run_disc_job(job: dict) -> dict:
 
     discretizer = CartPoleDiscretizer(grid_config)
     env = _CartPoleDiscreteWrapper(discretizer)
-    # Early stopping enabled for discretization study (natural plateau per grid).
-    cfg = _build_mf_config(algo_label, hp, disable_early_stopping=False)
+    cfg = _build_mf_config(algo_label, hp, disable_early_stopping=True)
 
     t_train = time.perf_counter()
     if algo_label == "sarsa":
@@ -929,7 +928,7 @@ def run() -> Path:
             "n_actions": CP_N_ACTIONS,
             "default_grid": "default",
             "train_episodes": CP_TRAIN_EPISODES,
-            "early_stopping_disabled_for_final_training": True,
+            "early_stopping_disabled": True,
             "baseline_schedule": baseline_hp,
             "sarsa_best_hp": sarsa_best_hp,
             "qlearning_best_hp": ql_best_hp,

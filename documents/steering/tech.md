@@ -135,7 +135,7 @@ Applied example for DP phases:
 **Output schema — model-free phases:**
 - `mf_learning_curves.csv` — algorithm, seed, regime, episode, window_mean (one row per window checkpoint per seed)
 - `mf_hp_search.csv` — per-config HP search results; ranked by `mean_return` (= win_rate − loss_rate for Blackjack) or `mean_episode_len` (CartPole)
-- `mf_eval_per_seed.csv` — one row per (algorithm, seed, regime); includes mean_return, final_window_return, convergence_episode
+- `mf_eval_per_seed.csv` — one row per (algorithm, seed, regime); includes `mean_return` (Blackjack) or `mean_episode_len` (CartPole), `final_window_return`, `convergence_episode`
 - `mf_eval_summary.csv` — long-format aggregate: one row per (algorithm, regime, metric) with mean/std/iqr columns
 
 **Stability metrics (model-free only):**
@@ -143,7 +143,7 @@ Applied example for DP phases:
 - `convergence_episode_iqr` — IQR of `convergence_episode` across 5 seeds; stored in `phase{N}.json` checkpoint summary
 
 **Model-free convergence rule (`convergence_episode`):**
-Running-mean plateau: first episode E where `|mean_return(E-W:E) − mean_return(E-2W:E-W)| < delta` for `RL_CONVERGENCE_M` consecutive window-pairs.
+Running-mean plateau: first episode E where `|signal(E-W:E) − signal(E-2W:E-W)| < delta` for `RL_CONVERGENCE_M` consecutive window-pairs, where `signal` is `mean_return` (Blackjack) or `mean_episode_len` (CartPole).
 Constants: `W=100`, `RL_CONVERGENCE_M=3` (in `config.py`).
 Delta is signal-scaled per environment: `RL_CONVERGENCE_DELTA=0.01` for Blackjack (return in [-1,1]); `CP_RL_CONVERGENCE_DELTA=10.0` for CartPole (episode length in [1,500], ~2% of range).
 
