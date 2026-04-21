@@ -274,6 +274,29 @@ CP_DISC_TRAIN_EPISODES: int = CP_TRAIN_EPISODES
 PHASE5_FINAL_TRAIN_MAX_WORKERS: int | None = None
 PHASE5_HP_SEARCH_MAX_WORKERS: int | None = None
 
+# ── J. Phase 7 — DQN Extra Credit ────────────────────────────────────────────
+# Training budget chosen to be comparable to tabular convergence scale (~1–2k ep).
+DQN_TRAIN_EPISODES: int = 2_000
+DQN_HIDDEN_DIM: int = 64
+DQN_REPLAY_SIZE: int = 10_000
+DQN_BATCH_SIZE: int = 64
+DQN_TRAIN_START: int = 1_000
+DQN_UPDATE_EVERY: int = 4
+DQN_TARGET_UPDATE_STEPS: int = 500
+DQN_LR: float = 5e-4
+DQN_GAMMA: float = 0.99
+DQN_EPS_START: float = 1.0
+DQN_EPS_END: float = 0.01
+DQN_EPS_DECAY_STEPS: int = 10_000  # over total environment steps
+DQN_MAX_GRAD_NORM: float = 10.0  # gradient-norm clip threshold
+DQN_EVAL_EPISODES: int = (
+    100  # greedy evaluation episodes per seed (matches CP_EVAL_EPISODES_MAIN)
+)
+DQN_EVAL_SEED_OFFSET: int = (
+    1_000_000  # eval_seed = train_seed + offset (keeps eval RNG independent)
+)
+PHASE7_MAX_WORKERS: int | None = None  # None = auto (min(jobs, cpu_count-1))
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATA_DIR: Path = Path("data")
 ARTIFACTS_DIR: Path = Path("artifacts")

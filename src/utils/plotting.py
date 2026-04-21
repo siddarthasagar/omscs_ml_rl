@@ -1630,3 +1630,138 @@ def plot_p6_final_performance(summary: dict, fig_dir: Path) -> Path:
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+# ── Phase 7 — DQN Extra Credit ────────────────────────────────────────────────
+
+# DQN variant colors — distinct from VI/PI and model-free tabular palettes
+_DQN_COLORS: dict[str, str] = {
+    "vanilla_dqn": "#1F77B4",  # medium blue
+    "double_dqn": "#FF7F0E",  # orange
+}
+_DQN_LABELS: dict[str, str] = {
+    "vanilla_dqn": "Vanilla DQN",
+    "double_dqn": "Double DQN",
+}
+
+
+def plot_p7_dqn_vs_double_dqn(summary: dict, fig_dir: Path) -> Path:
+    """Learning curves: mean episode length ± IQR vs episodes for both DQN variants.
+
+    Uses the aggregated per-seed learning curves stored in the Phase 7 checkpoint.
+    Seeds that converge early are padded with their final window_mean.
+    """
+    import matplotlib.pyplot as plt
+
+    curves = summary["learning_curves"]
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    for variant in ["vanilla_dqn", "double_dqn"]:
+        vc = curves[variant]
+        eps = np.array(vc["episodes"])
+        mn = np.array(vc["mean"])
+        q25 = np.array(vc["q25"])
+        q75 = np.array(vc["q75"])
+        color = _DQN_COLORS[variant]
+        label = _DQN_LABELS[variant]
+
+        ax.plot(eps, mn, color=color, linewidth=1.8, label=label)
+        ax.fill_between(eps, q25, q75, color=color, alpha=0.2)
+
+    ax.axhline(
+        500,
+        color=REFERENCE_COLORS["threshold"],
+        linewidth=1,
+        linestyle="--",
+        label="Max (500)",
+    )
+    ax.set_xlabel("Episode")
+    ax.set_ylabel("Mean episode length (window=100)")
+    ax.set_title("DQN vs Double DQN — CartPole (5 seeds, mean ± IQR)")
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    out = fig_dir / "cartpole_dqn_vs_double_dqn.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_p7_dqn_vs_tabular(summary: dict, fig_dir: Path) -> Path:
+    """Final performance bar chart: DQN variants vs tabular SARSA/Q-Learning (tuned).
+
+    DQN bars use the greedy evaluation metric (mean_eval_ep_len) so the
+    comparison is apples-to-apples with Phase 5 post-training greedy eval.
+    """
+    import matplotlib.pyplot as plt
+
+    vs = summary["variants"]
+    tc = summary["tabular_comparison"]
+
+    methods = ["Vanilla\nDQN", "Double\nDQN", "SARSA\n(tuned)", "Q-Learning\n(tuned)"]
+    vals = [
+        vs["vanilla_dqn"]["mean_eval_ep_len"],
+        vs["double_dqn"]["mean_eval_ep_len"],
+        tc["sarsa_tuned_mean_ep_len"],
+        tc["qlearning_tuned_mean_ep_len"],
+    ]
+    # IQR/2 for error bars
+    errs = [
+        vs["vanilla_dqn"]["eval_ep_len_iqr"] / 2,
+        vs["double_dqn"]["eval_ep_len_iqr"] / 2,
+        tc["sarsa_tuned_ep_len_iqr"] / 2,
+        tc["qlearning_tuned_ep_len_iqr"] / 2,
+    ]
+    colors = [
+        _DQN_COLORS["vanilla_dqn"],
+        _DQN_COLORS["double_dqn"],
+        _MF_COLORS["sarsa"],
+        _MF_COLORS["qlearning"],
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    x = np.arange(len(methods))
+    bars = ax.bar(
+        x,
+        vals,
+        0.5,
+        color=colors,
+        yerr=errs,
+        capsize=5,
+        error_kw={"elinewidth": 1.2, "ecolor": "#555555"},
+    )
+    finite_vals = [v for v in vals if v == v]
+    max_val = max(finite_vals) if finite_vals else 0
+    for bar, val in zip(bars, vals):
+        if val == val:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + max_val * 0.02,
+                f"{val:.1f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+    ax.axhline(
+        500,
+        color=REFERENCE_COLORS["threshold"],
+        linewidth=1,
+        linestyle="--",
+        label="Max (500)",
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels(methods)
+    ax.set_ylabel(
+        "Mean episode length ± IQR/2\n(DQN: greedy eval · tabular: tuned eval)"
+    )
+    ax.set_title("CartPole Final Performance — DQN vs Tabular Methods")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3, axis="y")
+
+    plt.tight_layout()
+    out = fig_dir / "cartpole_dqn_vs_tabular.png"
+    fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out

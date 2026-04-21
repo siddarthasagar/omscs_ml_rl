@@ -41,6 +41,11 @@ _REGISTRY: list[tuple[str, str, str]] = [
         "artifacts/metadata/phase6.json",
         "scripts/run_phase_6_comparison.py",
     ),
+    (
+        "phase7",
+        "artifacts/metadata/phase7.json",
+        "scripts/run_phase_7_dqn_ec.py",
+    ),
 ]
 
 
