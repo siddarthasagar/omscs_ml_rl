@@ -1,0 +1,245 @@
+\documentclass[letterpaper, 11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in, headheight=14pt]{geometry}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{parskip}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{listings}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em,
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{CS7641 --- Spring 2026}
+\lhead{Reproducibility Sheet}
+\rfoot{\thepage}
+
+\title{\textbf{Reproducibility Sheet}\\[4pt]
+\large CS7641: Machine Learning --- Spring 2026\\
+Reinforcement Learning on Blackjack and CartPole}
+\author{Siddartha Sagar Chinne \quad \texttt{schinne3@gatech.edu}}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{1.\ Overleaf Link (READ-ONLY)}
+
+\begin{center}
+\url{https://www.overleaf.com/read/rnptvkjgxqpq#ece22b}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{2.\ GitHub Commit Hash}
+
+The final code snapshot submitted with this report:
+
+\begin{lstlisting}
+0c84655818794185a99a9b319485f2d8f7f6cf4d
+\end{lstlisting}
+
+Repository hosted on GT Enterprise GitHub.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{3.\ Environment Setup}
+
+\textbf{Python version:} 3.13 (managed via \href{https://docs.astral.sh/uv/}{uv})
+
+\textbf{Operating system tested:} macOS 15 (Darwin); expected to run on standard Linux.
+
+\textbf{No external datasets.} Both environments are provided by \texttt{gymnasium}.
+
+\begin{lstlisting}
+# Clone repository
+git clone <gt-github-repo-url>
+cd omscs_ml_rl
+
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install all dependencies
+make dev
+\end{lstlisting}
+
+\texttt{make dev} creates \texttt{.venv/} and installs all production and development
+dependencies from \texttt{pyproject.toml} using \texttt{uv sync}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{4.\ Reproduction Commands}
+
+All phase scripts must be run via the \texttt{make} targets (which wrap
+\texttt{bash ml\_run.sh} for sleep prevention). Do not invoke
+\texttt{uv run python scripts/\ldots} directly for phase runs.
+
+\subsection*{4.1\ Full Pipeline (recommended)}
+
+\begin{lstlisting}
+make pipeline
+# Equivalent to: make phase1 gate1 phase2 phase3 phase4 phase5 phase6 phase8
+\end{lstlisting}
+
+\texttt{gate1} runs \texttt{pytest tests/test\_envs.py} after Phase 1 as a
+correctness gate; Phase 2 will not start until it passes.
+
+\subsection*{4.2\ Individual Phases}
+
+\begin{lstlisting}
+make phase1    # CartPole model estimation   ~40 s
+make gate1     # Environment test gate       < 5 s  (required before Phase 2)
+make phase2    # VI/PI on Blackjack          < 1 s
+make phase3    # VI/PI on CartPole           ~70 s
+make phase4    # SARSA/Q-Learning Blackjack  ~85 s
+make phase5    # SARSA/Q-Learning CartPole   ~960 s
+make phase6    # Cross-method comparison     < 5 s
+make phase7    # DQN extra credit            ~95 s  (optional, not in pipeline)
+make phase8    # Tables and repro artifacts  < 1 s
+\end{lstlisting}
+
+For phases expected to run longer than a few minutes, use the detached mode:
+
+\begin{lstlisting}
+bash ml_run.sh --detach "make phase5" phase5
+\end{lstlisting}
+
+\subsection*{4.3\ Figure Regeneration}
+
+Figures are read from saved checkpoints and can be regenerated at any time
+without rerunning experiments:
+
+\begin{lstlisting}
+make viz    # re-renders all phases
+# or a single phase:
+uv run python scripts/visualize_all.py phase5
+\end{lstlisting}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{5.\ Random Seeds}
+
+All model-free training runs (SARSA, Q-Learning, DQN) use the following five
+seeds, defined as the constant \texttt{SEEDS} in \texttt{src/config.py}:
+
+\begin{center}
+\textbf{42, 43, 44, 45, 46}
+\end{center}
+
+Dynamic programming methods (VI, PI) are deterministic and require no seed.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{6.\ CartPole Discretization (Default Grid)}
+
+The default discretization grid has \textbf{864 states} with bins
+$(x, \dot{x}, \theta, \dot{\theta}) = (3, 3, 8, 12)$.
+Non-uniform bin edges are listed verbatim below (from \texttt{src/config.py}).
+
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lp{10cm}}
+\toprule
+\textbf{Dimension} & \textbf{Bin edges (inclusive)} \\
+\midrule
+$x$ (cart pos., m)
+  & $[-2.4,\ -0.8,\ 0.8,\ 2.4]$ \\
+$\dot{x}$ (cart vel., m/s)
+  & $[-3.0,\ -1.0,\ 1.0,\ 3.0]$ \\
+$\theta$ (pole angle, rad)
+  & $[-0.200,\ -0.100,\ -0.050,\ -0.025,\ 0.000,\ 0.025,\ 0.050,\ 0.100,\ 0.200]$ \\
+$\dot{\theta}$ (pole vel., rad/s)
+  & $[-3.50,\ -2.00,\ -1.00,\ -0.50,\ -0.25,\ -0.10,\ 0.00,$\\
+  & $\phantom{[}0.10,\ 0.25,\ 0.50,\ 1.00,\ 2.00,\ 3.50]$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Observations outside these ranges are clamped to the boundary bin.
+Finer bins near zero on $\theta$ and $\dot{\theta}$ improve control resolution
+where it matters most.
+
+\medskip
+Two additional grids are used in the discretization ablation study:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Grid} & \textbf{Bins} & \textbf{States} & \textbf{Coverage} \\
+\midrule
+Coarse  & $(2, 2, 4, 6)$   & 96  & $\sim$41\% \\
+Default & $(3, 3, 8, 12)$  & 864 & $\sim$83\% \\
+Fine    & $(4, 4, 12, 16)$ & 3072 & $\sim$88\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{7.\ Key Hyperparameters}
+
+\subsection*{Dynamic Programming}
+
+\begin{tabular}{ll}
+Discount factor $\gamma$ (VI and PI): & 0.99 \\
+Convergence threshold $\delta$ (VI and PI): & $1 \times 10^{-6}$ \\
+\end{tabular}
+
+\subsection*{Model-Free (SARSA / Q-Learning)}
+
+Hyperparameters were selected via a two-stage grid search.
+Final tuned values (Blackjack and CartPole respectively) are recorded in
+\texttt{artifacts/metadata/phase4.json} and \texttt{artifacts/metadata/phase5.json}.
+
+\subsection*{DQN (Extra Credit)}
+
+\begin{tabular}{ll}
+Training episodes:          & 2{,}000 \\
+Hidden layer dimension:     & 64 \\
+Replay buffer size:         & 10{,}000 \\
+Batch size:                 & 64 \\
+Training start (steps):     & 1{,}000 \\
+Target network update:      & every 500 steps \\
+Learning rate:              & $5 \times 10^{-4}$ \\
+$\varepsilon$ decay steps:  & 10{,}000 \\
+$\gamma$:                   & 0.99 \\
+\end{tabular}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{8.\ Expected Outputs}
+
+All outputs are written under \texttt{artifacts/} (git-ignored):
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Path} & \textbf{Description} \\
+\midrule
+\texttt{artifacts/metadata/phase\{N\}.json} & Checkpoint per phase \\
+\texttt{artifacts/metrics/phase\{N\}\_*/}   & CSV metrics per phase \\
+\texttt{artifacts/figures/phase\{N\}\_*/}   & PNG figures per phase \\
+\texttt{artifacts/logs/phase\{N\}.log}      & Execution log per phase \\
+\texttt{artifacts/tables/report\_numbers.tex} & Inline number macros \\
+\texttt{artifacts/tables/tab\_*.tex}          & Table bodies \\
+\texttt{artifacts/repro/runbook.md}           & Detailed runbook \\
+\texttt{artifacts/repro/submission\_checklist.md} & Submission tracker \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
