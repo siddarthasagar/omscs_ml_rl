@@ -130,7 +130,7 @@ def plot_bj_convergence(metrics_dir: Path, metadata: dict, fig_dir: Path) -> Pat
 
     iter_max = max(vi_iters[-1], pi_iters[-1])
 
-    fig, (ax_vi, ax_pi) = plt.subplots(1, 2, figsize=(12, 4))
+    fig, (ax_vi, ax_pi) = plt.subplots(2, 1, figsize=(7, 8), sharex=True)
 
     # ── Left: VI — value convergence ─────────────────────────────────────────
     ax_vi.semilogy(
@@ -144,7 +144,6 @@ def plot_bj_convergence(metrics_dir: Path, metadata: dict, fig_dir: Path) -> Pat
         label=f"δ = {vi_delta:.0e}",
     )
     ax_vi.set_xlim(0, iter_max + 1)
-    ax_vi.set_xlabel("Iteration")
     ax_vi.set_ylabel("max |ΔV| (log scale)")
     ax_vi.set_title(
         f"Value Iteration  (γ={vi_gamma})\n"
@@ -196,7 +195,7 @@ def plot_bj_convergence(metrics_dir: Path, metadata: dict, fig_dir: Path) -> Pat
     ax_pi.grid(True, alpha=0.3)
 
     fig.suptitle("VI vs PI Convergence — Blackjack", fontsize=12, fontweight="bold")
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
     out = fig_dir / "blackjack_convergence.png"
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
@@ -233,7 +232,7 @@ def plot_bj_policy_map(
 
     cmap = mcolors.ListedColormap([BJ_ACTION_COLORS["Stick"], BJ_ACTION_COLORS["Hit"]])
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 6))
+    fig, axes = plt.subplots(2, 1, figsize=(10, 12))
     for ax, grid, ylabels, title in [
         (axes[0], hard_policy, hard_labels, "Hard hands (no usable ace)"),
         (axes[1], soft_policy, soft_labels, "Soft hands / usable ace"),
@@ -785,7 +784,7 @@ def plot_mf_learning_curve(
     available_regimes = [r for r in regimes if r in df["regime"].unique()]
 
     fig, axes = plt.subplots(
-        1, len(available_regimes), figsize=(7 * len(available_regimes), 5), sharey=True
+        len(available_regimes), 1, figsize=(7, 5 * len(available_regimes)), sharey=True
     )
     if len(available_regimes) == 1:
         axes = [axes]
@@ -816,11 +815,11 @@ def plot_mf_learning_curve(
                 color=color,
             )
         ax.set_xlabel("Episode")
+        ax.set_ylabel("Window-mean return (100-ep window)")
         ax.set_title(f"{regime.capitalize()} schedule", fontweight="bold")
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.3)
 
-    axes[0].set_ylabel("Window-mean return (100-ep window)")
     fig.suptitle(
         "Blackjack Learning Curves — SARSA vs Q-Learning",
         fontsize=12,
@@ -870,7 +869,7 @@ def plot_mf_comparison(
     width = 0.35
 
     fig, axes = plt.subplots(
-        1, len(available_regimes), figsize=(7 * len(available_regimes), 5), sharey=True
+        len(available_regimes), 1, figsize=(7, 5 * len(available_regimes)), sharey=True
     )
     if len(available_regimes) == 1:
         axes = [axes]
@@ -901,11 +900,10 @@ def plot_mf_comparison(
         ax.set_xticks(x)
         ax.set_xticklabels(labels)
         ax.set_xlabel("Outcome")
+        ax.set_ylabel("Rate")
         ax.set_title(f"{regime.capitalize()} schedule", fontweight="bold")
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.3, axis="y")
-
-    axes[0].set_ylabel("Rate")
     fig.suptitle(
         "Blackjack Final Eval — SARSA vs Q-Learning", fontsize=12, fontweight="bold"
     )
@@ -936,7 +934,7 @@ def plot_mf_hp_sensitivity(
     import pandas as pd
 
     df = pd.read_csv(metrics_dir / "mf_hp_search.csv")
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+    fig, axes = plt.subplots(2, 1, figsize=(8, 10), constrained_layout=True)
 
     for ax, algo, display in zip(
         axes,
@@ -955,16 +953,15 @@ def plot_mf_hp_sensitivity(
             s=60,
         )
         ax.set_xlabel("α start")
+        ax.set_ylabel("Mean return (win rate − loss rate)")
         ax.set_title(display, fontweight="bold")
         ax.grid(True, alpha=0.3)
 
-    axes[0].set_ylabel("Mean return (win rate − loss rate)")
     cbar = fig.colorbar(sc, ax=axes.tolist(), shrink=0.8)
     cbar.set_label("ε decay steps")
     fig.suptitle(
         "HP Sensitivity — Blackjack Model-Free", fontsize=12, fontweight="bold"
     )
-    plt.tight_layout()
     out = fig_dir / "blackjack_mf_hp_sensitivity.png"
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
@@ -997,7 +994,7 @@ def plot_cp_mf_learning_curve(
     ]
 
     fig, axes = plt.subplots(
-        1, len(available_regimes), figsize=(7 * len(available_regimes), 5), sharey=True
+        len(available_regimes), 1, figsize=(7, 5 * len(available_regimes)), sharey=True
     )
     if len(available_regimes) == 1:
         axes = [axes]
@@ -1028,11 +1025,11 @@ def plot_cp_mf_learning_curve(
                 color=color,
             )
         ax.set_xlabel("Episode")
+        ax.set_ylabel("Window-mean episode length (100-ep window)")
         ax.set_title(f"{regime.capitalize()} schedule", fontweight="bold")
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.3)
 
-    axes[0].set_ylabel("Window-mean episode length (100-ep window)")
     fig.suptitle(
         "CartPole Learning Curves — SARSA vs Q-Learning", fontsize=12, fontweight="bold"
     )
@@ -1073,7 +1070,7 @@ def plot_cp_mf_comparison(
     width = 0.35
 
     fig, axes = plt.subplots(
-        1, len(available_regimes), figsize=(5 * len(available_regimes), 5), sharey=True
+        len(available_regimes), 1, figsize=(7, 5 * len(available_regimes)), sharey=True
     )
     if len(available_regimes) == 1:
         axes = [axes]
@@ -1103,11 +1100,10 @@ def plot_cp_mf_comparison(
             )
         ax.set_xticks(x)
         ax.set_xticklabels(["Mean episode length"])
+        ax.set_ylabel("Mean episode length (steps)")
         ax.set_title(f"{regime.capitalize()} schedule", fontweight="bold")
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.3, axis="y")
-
-    axes[0].set_ylabel("Mean episode length (steps)")
     fig.suptitle(
         "CartPole Final Eval — SARSA vs Q-Learning", fontsize=12, fontweight="bold"
     )
@@ -1134,7 +1130,7 @@ def plot_cp_mf_hp_sensitivity(
     import pandas as pd
 
     df = pd.read_csv(metrics_dir / "mf_hp_search.csv")
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+    fig, axes = plt.subplots(2, 1, figsize=(8, 10), constrained_layout=True)
 
     for ax, algo, display in zip(axes, ["sarsa", "qlearning"], ["SARSA", "Q-Learning"]):
         sub = df[df["algorithm"] == algo]
@@ -1149,14 +1145,13 @@ def plot_cp_mf_hp_sensitivity(
             s=60,
         )
         ax.set_xlabel("α start")
+        ax.set_ylabel("Mean episode length")
         ax.set_title(display, fontweight="bold")
         ax.grid(True, alpha=0.3)
 
-    axes[0].set_ylabel("Mean episode length")
     cbar = fig.colorbar(sc, ax=axes.tolist(), shrink=0.8)
     cbar.set_label("ε decay steps")
     fig.suptitle("HP Sensitivity — CartPole Model-Free", fontsize=12, fontweight="bold")
-    plt.tight_layout()
     out = fig_dir / "cartpole_mf_hp_sensitivity.png"
     fig.savefig(out, dpi=DEFAULT_DPI, bbox_inches="tight")
     plt.close(fig)
@@ -1283,7 +1278,7 @@ def plot_p6_planning_efficiency(summary: dict, fig_dir: Path) -> Path:
     data = summary["planning_efficiency"]
     envs = ["blackjack", "cartpole"]
 
-    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    fig, axes = plt.subplots(2, 1, figsize=(7, 8))
     for ax, env in zip(axes, envs):
         vi_iters = data[env]["vi"]["iterations"]
         pi_iters = data[env]["pi"]["iterations"]
@@ -1322,7 +1317,7 @@ def plot_p6_learning_efficiency(summary: dict, fig_dir: Path) -> Path:
     data = summary["learning_efficiency"]
     envs = ["blackjack", "cartpole"]
 
-    fig, axes = plt.subplots(1, 2, figsize=(9, 4))
+    fig, axes = plt.subplots(2, 1, figsize=(7, 8))
     for ax, env in zip(axes, envs):
         algos = ["sarsa", "qlearning"]
         means = [
@@ -1460,7 +1455,7 @@ def plot_p6_wall_clock(summary: dict, fig_dir: Path) -> Path:
 
     x = np.arange(len(methods))
     w = 0.35
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig, axes = plt.subplots(2, 1, figsize=(7, 8))
 
     # Blackjack
     for i, (m, t, c) in enumerate(zip(methods, bj_times, colors)):
@@ -1520,7 +1515,7 @@ def plot_p6_final_performance(summary: dict, fig_dir: Path) -> Path:
 
     fp = summary["final_performance"]
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig, axes = plt.subplots(2, 1, figsize=(7, 8))
 
     # ── Blackjack (mean return, ±IQR/2) ──────────────────────────────────────
     ax = axes[0]
