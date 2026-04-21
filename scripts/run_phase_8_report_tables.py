@@ -8,6 +8,7 @@ Reads all upstream phase checkpoints and writes:
     tab_bj_mf.tex          — SARSA / Q-Learning Blackjack (controlled vs tuned)
     tab_cp_mf.tex          — SARSA / Q-Learning CartPole (controlled vs tuned)
     tab_cp_disc.tex        — CartPole discretization study
+    tab_mf_hp_signal.tex   — HP search signal evidence (Blackjack, tuned winner)
     tab_dqn_ec.tex         — DQN extra credit (written only if phase7.json exists)
     report_numbers.tex     — \\newcommand macros for every inline number
 
@@ -35,6 +36,7 @@ Usage:
 
 from __future__ import annotations
 
+import csv
 import time
 from pathlib import Path
 
@@ -248,6 +250,103 @@ def _tab_dqn_ec(p7: dict) -> str:
     return f"\\begin{{tabular}}{{{cols}}}\n" + "\n".join(rows) + "\n\\end{tabular}\n"
 
 
+# ── HP search signal helpers ─────────────────────────────────────────────────
+
+
+def _load_mf_hp_csv(path: Path) -> list[dict]:
+    """Load an mf_hp_search.csv as a list of dicts with numeric values cast."""
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        rows = []
+        for row in reader:
+            for k in (
+                "alpha_start",
+                "alpha_end",
+                "alpha_decay_steps",
+                "eps_decay_steps",
+                "gamma",
+                "mean_return",
+                "mean_episode_len",
+            ):
+                if k in row and row[k] not in ("", None):
+                    row[k] = float(row[k])
+            for k in ("stage", "config_idx", "config_index"):
+                if k in row and row[k] not in ("", None):
+                    row[k] = int(float(row[k]))
+            rows.append(row)
+    return rows
+
+
+def _select_top_bottom(
+    rows: list[dict], metric: str, top_n: int = 3
+) -> tuple[list[dict], list[dict]]:
+    """Return (top_n, bottom_n) rows sorted by metric descending then config index."""
+    key_col = "config_idx" if "config_idx" in rows[0] else "config_index"
+    sorted_rows = sorted(rows, key=lambda r: (-r[metric], r.get(key_col, 0)))
+    return sorted_rows[:top_n], sorted_rows[-top_n:]
+
+
+def _tab_mf_hp_signal(p4: dict, metrics_dir: Path) -> tuple[str, float, float]:
+    """Tabular body: top-3 / bottom-3 HP configs for Blackjack tuned winner.
+
+    Returns (table_str, best_metric, worst_metric).
+    """
+    # Pick the algo with higher tuned mean_return as the showcase algorithm
+    sarsa_return = p4["tuned"]["sarsa"]["mean_return"]
+    ql_return = p4["tuned"]["qlearning"]["mean_return"]
+    algo_key = "sarsa" if sarsa_return >= ql_return else "qlearning"
+    algo_label = "SARSA" if algo_key == "sarsa" else "Q-Learning"
+
+    csv_path = metrics_dir / "mf_hp_search.csv"
+    all_rows = _load_mf_hp_csv(csv_path)
+    algo_rows = [r for r in all_rows if r["algorithm"] == algo_key]
+    top_rows, bot_rows = _select_top_bottom(algo_rows, "mean_return")
+
+    best_metric = top_rows[0]["mean_return"]
+    worst_metric = bot_rows[-1]["mean_return"]
+
+    def _row(rank: str, r: dict) -> str:
+        stage = str(int(r.get("stage", 0)))
+        cfg = str(int(r.get("config_idx", r.get("config_index", 0))))
+        return (
+            f"{rank} & {stage} & {cfg}"
+            f" & {_fmt(r['alpha_start'], 3)}"
+            f" & {_fmt(r['alpha_end'], 4)}"
+            f" & {_fmt_int(r['alpha_decay_steps'])}"
+            f" & {_fmt_int(r['eps_decay_steps'])}"
+            f" & {_fmt(r['mean_return'], 4)} \\\\"
+        )
+
+    rows = [
+        r"\hline",
+        r"\textbf{Rank} & \textbf{Stage} & \textbf{Cfg}"
+        r" & \textbf{$\alpha_0$} & \textbf{$\alpha_{end}$}"
+        r" & \textbf{$\alpha$ steps} & \textbf{$\varepsilon$ steps}"
+        r" & \textbf{Return} \\",
+        r"\hline",
+        r"\multicolumn{8}{l}{\textit{Top 3 — " + algo_label + r"}} \\",
+        r"\hline",
+    ]
+    for i, r in enumerate(top_rows, 1):
+        rows.append(_row(str(i), r))
+    rows += [
+        r"\hline",
+        r"\multicolumn{8}{l}{\textit{Bottom 3 — " + algo_label + r"}} \\",
+        r"\hline",
+    ]
+    for i, r in enumerate(bot_rows, 1):
+        rows.append(_row(str(i), r))
+    rows.append(r"\hline")
+
+    cols = "rrrrrrrrr"[: len("rrrrrrrrr")]  # 8 columns
+    cols = "crrrrrrrr"[:8]
+    return (
+        f"\\begin{{tabular}}{{{cols}}}\n" + "\n".join(rows) + "\n\\end{tabular}\n",
+        best_metric,
+        worst_metric,
+    )
+
+
 # ── Macro generator ───────────────────────────────────────────────────────────
 
 
@@ -259,6 +358,7 @@ def _build_report_numbers(
     p5: dict,
     p6: dict,
     p7: dict | None,
+    hp_signal: dict | None = None,
 ) -> str:
     """Return the full content of report_numbers.tex."""
     lines: list[str] = [
@@ -399,6 +499,17 @@ def _build_report_numbers(
     )
     lines.append(_macro("WallClockTotal", _fmt(total_wc / 60, 1) + "~min"))
     lines.append("")
+
+    # ── HP search signal (optional, from tab_mf_hp_signal) ──────────────────
+    if hp_signal is not None:
+        lines.append("% HP search signal — Blackjack tuned winner")
+        lines.append(_macro("HPAlgo", hp_signal["algo_label"]))
+        lines.append(_macro("HPBestMetric", _fmt(hp_signal["best"], 4)))
+        lines.append(_macro("HPWorstMetric", _fmt(hp_signal["worst"], 4)))
+        lines.append(
+            _macro("HPSignalSpread", _fmt(hp_signal["best"] - hp_signal["worst"], 4))
+        )
+        lines.append("")
 
     # ── Phase 7 — DQN EC (optional) ──────────────────────────────────────────
     if p7 is not None:
@@ -552,6 +663,7 @@ Auto-generated by `scripts/run_phase_8_report_tables.py`.
 - [ ] `artifacts/tables/tab_bj_mf.tex`
 - [ ] `artifacts/tables/tab_cp_mf.tex`
 - [ ] `artifacts/tables/tab_cp_disc.tex`
+- [ ] `artifacts/tables/tab_mf_hp_signal.tex`
 {"- [ ] `artifacts/tables/tab_dqn_ec.tex`" if p7_exists else ""}
 
 ## Figures
@@ -640,11 +752,26 @@ def run() -> Path:
     _write_table("tab_bj_mf.tex", _tab_bj_mf(p4))
     _write_table("tab_cp_mf.tex", _tab_cp_mf(p5))
     _write_table("tab_cp_disc.tex", _tab_cp_disc(p5))
+
+    # HP signal table — reads phase4 mf_hp_search.csv directly
+    bj_metrics_dir = ARTIFACTS_DIR / "metrics" / "phase4_model_free_blackjack"
+    hp_table, hp_best, hp_worst = _tab_mf_hp_signal(p4, bj_metrics_dir)
+    _write_table("tab_mf_hp_signal.tex", hp_table)
+    sarsa_return = p4["tuned"]["sarsa"]["mean_return"]
+    ql_return = p4["tuned"]["qlearning"]["mean_return"]
+    hp_signal = {
+        "algo_label": "SARSA" if sarsa_return >= ql_return else "Q-Learning",
+        "best": hp_best,
+        "worst": hp_worst,
+    }
+
     if p7 is not None:
         _write_table("tab_dqn_ec.tex", _tab_dqn_ec(p7))
 
     # ── Write report_numbers.tex ──────────────────────────────────────────────
-    report_numbers_content = _build_report_numbers(p1, p2, p3, p4, p5, p6, p7)
+    report_numbers_content = _build_report_numbers(
+        p1, p2, p3, p4, p5, p6, p7, hp_signal=hp_signal
+    )
     report_numbers_path = TABLES_DIR / "report_numbers.tex"
     report_numbers_path.write_text(report_numbers_content)
     logger.info(

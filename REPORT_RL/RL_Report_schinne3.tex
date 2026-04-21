@@ -50,11 +50,21 @@ The Blackjack planner uses an exact analytic model with \BJNStates states built 
 
 VI and PI were run with discount $\gamma = 0.99$ and convergence tolerance $\delta = 10^{-6}$ after validating both hyperparameters. VI works by repeatedly applying the Bellman optimality backup to every state until the value function stabilizes. PI instead alternates between evaluating the current policy and then improving it greedily with respect to that value estimate. In this project, both methods were applied to the exact Blackjack model and to fitted CartPole models built from discretized transitions. For VI, convergence was measured by the maximum change in the value function, $\max_s |V_{k+1}(s) - V_k(s)| < \delta$. For PI, convergence was defined by zero policy changes after a policy-improvement step. The hyperparameter sweeps showed that $\gamma$ materially affected policy quality on both tasks, while $\delta$ mainly changed runtime once it was sufficiently small.
 
-For CartPole, the critical design choice is the state grid. I used non-uniform bins that emphasize pole angle and angular velocity near zero, since those dimensions dominate recoverability. The three evaluated grids were coarse $(1, 1, 6, 12)$, default $(3, 3, 8, 12)$, and fine $(5, 5, 10, 16)$, with clamping ranges $x \in [-2.4, 2.4]$, $\dot{x} \in [-3, 3]$, $\theta \in [-0.2, 0.2]$, and $\dot{\theta} \in [-3.5, 3.5]$.
+For reproducibility, the DP validation sweeps used $\gamma \in \{0.85, 0.90, 0.95, 0.99\}$ and $\delta \in \{10^{-2}, 10^{-3}, 10^{-4}, 10^{-6}\}$. On Blackjack, that sweep changed validation return over roughly $[-0.0408, -0.0380]$ while moving VI from 6 to 9 sweeps; on default-grid CartPole, it moved VI from 87 to 1376 sweeps and PI from 9 to 10 iterations while keeping evaluation performance in a relatively narrow range around 455--465 steps.
+
+For CartPole, the critical design choice is the state grid. I used non-uniform bins that emphasize pole angle and angular velocity near zero, since those dimensions dominate recoverability. The three evaluated grids were coarse $(1, 1, 6, 12)$, default $(3, 3, 8, 12)$, and fine $(5, 5, 10, 16)$, with clamping ranges $x \in [-2.4, 2.4]$, $\dot{x} \in [-3, 3]$, $\theta \in [-0.2, 0.2]$, and $\dot{\theta} \in [-3.5, 3.5]$. The default-grid bin edges used in the main comparisons were:
+
+\begin{align*}
+x &: \{-2.4, -0.8, 0.8, 2.4\}, \\
+\dot{x} &: \{-3.0, -1.0, 1.0, 3.0\}, \\
+\theta &: \{-0.2, -0.1, -0.05, -0.025, 0, 0.025, 0.05, 0.1, 0.2\}, \\
+\dot{\theta} &: \{-3.5, -2, -1, -0.5, -0.25, -0.1,\notag \\
+&\qquad 0, 0.1, 0.25, 0.5, 1, 2, 3.5\}.
+\end{align*}
 
 \subsection{Model-Free Learning}
 
-All tabular model-free agents used decaying $\epsilon$-greedy exploration. SARSA is on-policy because its bootstrap target uses the next action actually selected by the current exploratory policy, whereas Q-learning is off-policy because it backs up the greedy best next-action value even when the behavior policy is still exploring. The tabular model-free agents therefore use the following updates:
+All tabular model-free agents used decaying $\epsilon$-greedy exploration. SARSA is on-policy because its bootstrap target uses the next action actually selected by the current exploratory policy. Q-learning is off-policy because it backs up the greedy best next-action value even when the behavior policy is still exploring. The tabular model-free agents therefore use the following updates:
 
 \begin{align}
 Q(s_t, a_t) &\leftarrow Q(s_t, a_t) + \alpha \bigl[r_{t+1} \notag \\
@@ -63,9 +73,11 @@ Q(s_t, a_t) &\leftarrow Q(s_t, a_t) + \alpha \bigl[r_{t+1} \notag \\
 &\qquad + \gamma \max_{a'} Q(s_{t+1}, a') - Q(s_t, a_t)\bigr].
 \end{align}
 
-Both algorithms were first compared under a controlled baseline schedule to isolate the on-policy versus off-policy difference, and then re-run under algorithm-specific tuned schedules. The validation protocol followed a three-stage search. Stage 1 sampled 24 random configurations per algorithm. Stage 2 promoted the top 8. Stage 3 refined the top 3 locally around the best candidates. Blackjack used 20k, 50k, and 100k episodes per seed across the three stages; CartPole used 2k, 5k, and 10k episodes per seed. The final reporting runs used 500k episodes on Blackjack and 20k episodes on CartPole.
+Both algorithms were first compared under a controlled baseline schedule to isolate the on-policy versus off-policy difference, and then re-run under algorithm-specific tuned schedules. The validation protocol followed a three-stage search. Stage 1 sampled 24 random configurations per algorithm from discrete candidate grids. For Blackjack, the search ranges were $\alpha_{0} \in [0.1, 0.9]$, $\alpha_{\min} \in [0.001, 0.05]$, $\alpha$-decay in $[50\text{k}, 500\text{k}]$, and $\epsilon$-decay in $[20\text{k}, 200\text{k}]$. For CartPole, the corresponding ranges were $\alpha_{0} \in [0.1, 0.9]$, $\alpha_{\min} \in [0.001, 0.05]$, $\alpha$-decay in $[10\text{k}, 100\text{k}]$, and $\epsilon$-decay in $[2\text{k}, 20\text{k}]$. Stage 2 promoted the top 8. Stage 3 refined the top 3 locally around the best candidates. Blackjack used 20k, 50k, and 100k episodes per seed across the three stages; CartPole used 2k, 5k, and 10k episodes per seed. The final reporting runs used 500k episodes on Blackjack and 20k episodes on CartPole.
 
-Model-free convergence is reported as the first episode at which a running-window performance signal plateaued for multiple consecutive windows. The learning-curve figures show the mean trajectory with variability bands across the five seeds, while tables and aggregate comparisons report IQR-based variability because the seed-to-seed spread was often large.
+The controlled baseline was quantified explicitly to keep the SARSA-versus-Q-learning comparison fair. On Blackjack, both agents used $\alpha: 0.5 \rightarrow 0.01$ over 200k episodes and $\epsilon: 1.0 \rightarrow 0.01$ over 10k episodes. On CartPole, both agents used $\alpha: 0.5 \rightarrow 0.01$ over 100k episodes and the same $\epsilon: 1.0 \rightarrow 0.01$ over 10k episodes. The final tuned schedules were: Blackjack SARSA $\alpha: 0.1 \rightarrow 0.05$ with 200k decay and 62.5k $\epsilon$-decay, Blackjack Q-learning $\alpha: 0.25 \rightarrow 0.01$ with 100k decay and 25k $\epsilon$-decay, CartPole SARSA $\alpha: 0.7 \rightarrow 0.01$ with 30k decay and 20k $\epsilon$-decay, and CartPole Q-learning $\alpha: 0.5 \rightarrow 0.01$ with 30k decay and 25k $\epsilon$-decay.
+
+Model-free convergence is reported as the first episode at which a running-window performance signal plateaued for multiple consecutive windows. The learning-curve figures show the mean $\pm$ standard-deviation trajectory across the five seeds, while tables and aggregate comparisons report IQR-based variability because the seed-to-seed spread was often large.
 
 \section{Results}
 
@@ -73,12 +85,12 @@ Model-free convergence is reported as the first episode at which a running-windo
 
 Blackjack is the cleanest case for dynamic programming because the model is exact and the state space is small. The result is decisive. VI converged in \BJVIIters sweeps, PI stabilized in \BJPIIters policy-improvement steps, and both methods produced the same greedy policy with identical mean evaluation return of \BJVIReturn and IQR \BJVIReturnIQR. PI therefore wins on iteration count without paying a policy-quality penalty.
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/phase2_vi_pi_blackjack/blackjack_convergence.png}
+\includegraphics[width=\columnwidth]{figures/phase2_vi_pi_blackjack/blackjack_convergence.png}
 \caption{Blackjack planning convergence. VI drives the Bellman residual below $10^{-6}$ in 9 sweeps, while PI reaches a stable policy in 3 iterations.}
 \label{fig:bj_convergence}
-\end{figure*}
+\end{figure}
 
 The optimal policy is also interpretable. The heatmap in Fig.~\ref{fig:bj_policy} shows the familiar threshold behavior: hard hands stick at high totals, while soft hands tolerate more aggressive hitting because the usable ace softens the bust penalty. The fact that VI and PI recover the same qualitative structure strengthens the claim that the difference between them is computational rather than behavioral on this MDP.
 
@@ -93,52 +105,46 @@ The optimal policy is also interpretable. The heatmap in Fig.~\ref{fig:bj_policy
 
 CartPole is more subtle because the fitted model quality depends on the grid. Table~\ref{tab:cp_dp} summarizes the main trade-off. VI required 1376 sweeps on all three grids because the stopping threshold and contraction behavior were nearly identical, but PI needed only 9, 10, and 12 iterations on the coarse, default, and fine grids. The larger differences were in coverage and planning cost. Coverage dropped from \CPCoarseCoverage on the coarse grid to \CPFineCoverage on the fine grid, while fine-grid PI time rose to \CPFinePIWallClock~s.
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\begin{minipage}[t]{0.49\textwidth}
-\centering
-\includegraphics[width=\linewidth]{figures/phase3_vi_pi_cartpole/cartpole_vi_convergence.png}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.49\textwidth}
-\centering
-\includegraphics[width=\linewidth]{figures/phase3_vi_pi_cartpole/cartpole_pi_convergence.png}
-\end{minipage}
+\includegraphics[width=\columnwidth]{figures/phase3_vi_pi_cartpole/cartpole_vi_convergence.png}\\[0.4em]
+\includegraphics[width=\columnwidth]{figures/phase3_vi_pi_cartpole/cartpole_pi_convergence.png}
 \caption{CartPole planning convergence. VI residual traces overlap across grids, while PI remains much cheaper in iteration count even as the grid is refined.}
 \label{fig:cp_dp_convergence}
-\end{figure*}
+\end{figure}
 
-The coarse grid achieved the best evaluation score, including 500-step performance for both VI and PI, but I do not treat that as the most trustworthy representation of the true control problem. With only 72 states and very aggressive aggregation, many physically distinct situations are forced into the same bin. The default grid is a better compromise: it preserves more structure than the coarse model while keeping wall-clock modest (VI \CPDefaultVIWallClock~s, PI \CPDefaultPIWallClock~s). The fine grid pushes in the wrong direction. It expands the state space to 4000 states, coverage collapses, and both performance and runtime deteriorate. For the final algorithm comparison, the default grid is therefore the fairest choice because it avoids both extreme aliasing and extreme sparsity.
+The coarse grid achieved the best evaluation score, including 500-step performance for both VI and PI, but I do not treat that as the most trustworthy representation of the true control problem. With only 72 states and very aggressive aggregation, many physically distinct situations are forced into the same bin. The default grid is a better compromise: it preserves more structure than the coarse model while keeping wall-clock modest (VI \CPDefaultVIWallClock~s, PI \CPDefaultPIWallClock~s). The fine grid pushes in the wrong direction. It expands the state space to 4000 states, coverage collapses, and both performance and runtime deteriorate. On the default grid, VI and PI agree on \CPDefaultPolicyAgreement of actions rather than exactly 100\%, which suggests that a small set of low-coverage or near-indifferent states can admit different greedy choices without materially changing episode length. For the final algorithm comparison, the default grid is therefore the fairest choice because it avoids both extreme aliasing and extreme sparsity.
 
-\begin{table*}[t]
+\begin{table}[t]
 \caption{CartPole VI/PI summary across discretization grids.}
 \label{tab:cp_dp}
 \centering
-\resizebox{\textwidth}{!}{\input{tables/tab_cp_dp}}
-\end{table*}
+\resizebox{\columnwidth}{!}{\input{tables/tab_cp_dp}}
+\end{table}
 
 \subsection{Blackjack: SARSA vs. Q-Learning}
 
-Under the shared controlled schedule, SARSA behaved exactly as hypothesized for a stochastic MDP. Its mean return was less negative than Q-learning's (\BJSarsaControlledReturn vs. \BJQLControlledReturn), its final-window variability was lower (0.04 vs. 0.13), and it reached the plateau criterion earlier (\BJSarsaControlledConvEp vs. \BJQLControlledConvEp). The gap persisted after tuning. SARSA improved to \BJSarsaTunedReturn mean return and \BJSarsaTunedConvEp mean convergence episode, while tuned Q-learning still trailed at \BJQLTunedReturn and \BJQLTunedConvEp.
+Using mean convergence episode as the sample-efficiency metric, SARSA behaved exactly as hypothesized for a stochastic MDP. Under the shared controlled schedule, its mean return was less negative than Q-learning's (\BJSarsaControlledReturn vs. \BJQLControlledReturn), its final-window variability was lower (0.04 vs. 0.13), and it reached the plateau criterion earlier (\BJSarsaControlledConvEp vs. \BJQLControlledConvEp). The gap persisted after tuning. SARSA improved to \BJSarsaTunedReturn mean return and \BJSarsaTunedConvEp mean convergence episode, while tuned Q-learning still trailed at \BJQLTunedReturn and \BJQLTunedConvEp.
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/phase4_model_free_blackjack/blackjack_mf_learning_curves.png}
-\caption{Blackjack learning curves under controlled and tuned schedules. Shaded bands show variability across five seeds; SARSA is more stable and reaches better final return on this stochastic task.}
+\includegraphics[width=\columnwidth]{figures/phase4_model_free_blackjack/blackjack_mf_learning_curves.png}
+\caption{Blackjack learning curves under controlled and tuned schedules. Shaded bands show mean $\pm$ standard deviation across five seeds; SARSA is more stable and reaches better final return on this stochastic task.}
 \label{fig:bj_mf_learning}
-\end{figure*}
+\end{figure}
 
 The practical interpretation is that off-policy bootstrapping did not help on Blackjack as much as expected from pure control theory. The stochastic reward structure makes optimistic max targets noisy, and the on-policy SARSA update appears to damp that noise. The hyperparameter search confirmed that exploration schedule mattered more than tiny adjustments to the terminal learning rate: once $\epsilon$ decayed too quickly, both agents locked into mediocre policies, but Q-learning was more sensitive to that failure mode.
 
 \subsection{CartPole: SARSA vs. Q-Learning}
 
-CartPole flips the model-free ranking. Under the controlled schedule, Q-learning already outperformed SARSA (\CPQLControlledEpLen vs. \CPSarsaControlledEpLen mean episode length) while converging at nearly the same episode budget. Tuning widened the gap further: tuned Q-learning reached \CPQLTunedEpLen mean episode length with IQR \CPQLTunedEpLenIQR, while tuned SARSA reached \CPSarsaTunedEpLen with IQR \CPSarsaTunedEpLenIQR.
+Using convergence episode as the sample-efficiency metric, CartPole flips the model-free ranking. Under the controlled schedule, Q-learning already outperformed SARSA (\CPQLControlledEpLen vs. \CPSarsaControlledEpLen mean episode length) while converging at nearly the same episode budget. Tuning widened the gap further: tuned Q-learning reached \CPQLTunedEpLen mean episode length with IQR \CPQLTunedEpLenIQR, while tuned SARSA reached \CPSarsaTunedEpLen with IQR \CPSarsaTunedEpLenIQR.
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/phase5_model_free_cartpole/cartpole_mf_learning_curves.png}
-\caption{CartPole learning curves under controlled and tuned schedules. Shaded bands show variability across five seeds; Q-learning benefits more from tuning on the default grid.}
+\includegraphics[width=\columnwidth]{figures/phase5_model_free_cartpole/cartpole_mf_learning_curves.png}
+\caption{CartPole learning curves under controlled and tuned schedules. Shaded bands show mean $\pm$ standard deviation across five seeds; Q-learning benefits more from tuning on the default grid.}
 \label{fig:cp_mf_learning}
-\end{figure*}
+\end{figure}
 
 The discretization ablation in Table~\ref{tab:cp_disc} shows the same coarse/default/fine pattern observed in DP. The fine grid is too sparse for stable tabular learning and both algorithms collapse badly there. The coarse grid is strongest numerically, especially for Q-learning, but again it achieves that strength with much stronger aliasing. The default grid remains the best balanced choice for report-wide comparisons because it is expressive enough to model the pole-angle dynamics while still receiving enough repeated visits for robust learning.
 
@@ -153,25 +159,35 @@ The discretization ablation in Table~\ref{tab:cp_disc} shows the same coarse/def
 
 The cross-method view makes two points clear. First, PI is computationally preferable to VI whenever both are available. It reduces planning iterations from 9 to 3 on Blackjack and from 1376 to 10 on default-grid CartPole while preserving or slightly improving final performance. Second, dynamic programming remains strongest overall on these small-to-medium MDPs. On Blackjack, VI and PI both outperform the tuned model-free agents in final return. On CartPole, DP on the default grid still beats tuned Q-learning by a large margin (PI \CPDefaultPIEpLen, VI \CPDefaultVIEpLen, tuned Q-learning \CPQLTunedEpLen).
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\begin{minipage}[t]{0.49\textwidth}
-\centering
-\includegraphics[width=\linewidth]{figures/phase6_comparison/final_performance_comparison.png}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.49\textwidth}
-\centering
-\includegraphics[width=\linewidth]{figures/phase6_comparison/wall_clock_comparison.png}
-\end{minipage}
-\caption{Cross-method summary. Left: final performance using tuned model-free agents and the default CartPole grid. Right: wall-clock cost under the controlled regime. On CartPole, the model-build overhead is real but still cheaper than the final model-free training runs.}
+\includegraphics[width=\columnwidth]{figures/phase6_comparison/final_performance_comparison.png}
+\caption{Cross-method final performance using tuned model-free agents and the default CartPole grid. Dynamic programming remains strongest overall, while tuned Q-learning is the strongest tabular model-free baseline on CartPole.}
 \label{fig:cross_method}
-\end{figure*}
+\end{figure}
+
+\begin{table}[t]
+\caption{Wall-clock summary for the final reported runs (seconds). CartPole VI/PI totals include model construction.}
+\label{tab:wall_clock}
+\centering
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{lrr}
+\hline
+Method & Blackjack & CartPole \\
+\hline
+VI & \BJVIWallClock & \CPVIWallClock \\
+PI & \BJPIWallClock & \CPPIWallClock \\
+SARSA & \BJSarsaWallClock & \CPSarsaWallClock \\
+Q-Learning & \BJQLWallClock & \CPQLWallClock \\
+\hline
+\end{tabular}}
+\end{table}
 
 The wall-clock result is important because it moderates the usual claim that model-based planning is only attractive on tiny problems. On Blackjack, planning time is effectively zero. On CartPole, the learned model costs \CPModelBuildWallClock~s to build, but the total DP runtime is still only about 37~s, compared with \CPSarsaWallClock~s and \CPQLWallClock~s for the controlled model-free runs. On this assignment, a decent model is worth the upfront cost.
 
 \subsection{Extra Credit: Vanilla DQN vs. Double DQN}
 
-For extra credit, I implemented a small replay-based DQN with a 64-unit hidden layer, replay buffer size 10,000, batch size 64, target-network refresh every 500 steps, and 2000 training episodes. Unlike tabular Q-learning, which stores a separate value for each discrete state-action pair, DQN learns a neural approximation to $Q(s,a)$ and stabilizes training with replay memory and a delayed target network. I then compared a vanilla target against a Double DQN target, where Double DQN decouples action selection from target evaluation to reduce overestimation. The result is mixed rather than triumphant. Vanilla DQN reached \VanillaDQNEvalEpLen greedy-evaluation mean episode length, Double DQN reached only \DoubleDQNEvalEpLen, and neither variant satisfied the convergence rule within the 2k-episode budget. Tuned tabular Q-learning remained strongest at \DQNQLBaseline.
+For extra credit, I implemented a small replay-based DQN with a 64-unit hidden layer, replay buffer size 10,000, batch size 64, target-network refresh every 500 steps, and 2000 training episodes. Unlike tabular Q-learning, which stores a separate value for each discrete state-action pair, DQN learns a neural approximation to $Q(s,a)$ and stabilizes training with replay memory and a delayed target network. I then compared a vanilla target against a Double DQN target, where Double DQN decouples action selection from target evaluation to reduce overestimation. The result is mixed rather than triumphant. Vanilla DQN reached \VanillaDQNEvalEpLen greedy-evaluation mean episode length, Double DQN reached only \DoubleDQNEvalEpLen, and neither variant satisfied the convergence rule within the 2k-episode budget. Tuned tabular Q-learning remained strongest at \DQNQLBaseline. Because the extra-credit run was time-boxed, these DQN hyperparameters were held fixed rather than swept systematically, so this section should be read as an ablation under one reasonable configuration rather than a fully tuned deep-RL benchmark.
 
 \begin{table}[t]
 \caption{Extra-credit DQN summary on CartPole.}
@@ -180,7 +196,7 @@ For extra credit, I implemented a small replay-based DQN with a 64-unit hidden l
 \resizebox{\columnwidth}{!}{\input{tables/tab_dqn_ec}}
 \end{table}
 
-The main lesson is that function approximation did not automatically improve this problem. Vanilla DQN was competitive with tuned SARSA, but it did not beat tuned tabular Q-learning, and Double DQN was worse than vanilla in the current compute budget. That is a useful result: the gap between tabular control and neural control is not just representational capacity, but also optimization stability, replay quality, and training horizon.
+The main lesson is that function approximation did not automatically improve this problem. Vanilla DQN was competitive with tuned SARSA, but it did not beat tuned tabular Q-learning, and Double DQN was worse than vanilla in the current compute budget. Notably, Double DQN's final training-window episode length (\DoubleDQNFinalEpLen) was close to vanilla's (\VanillaDQNFinalEpLen) even though its greedy evaluation collapsed to \DoubleDQNEvalEpLen, which suggests a brittle learned policy: it could still produce occasional long training episodes, but that behavior did not translate into a robust greedy controller. That is a useful result: the gap between tabular control and neural control is not just representational capacity, but also optimization stability, replay quality, training horizon, and sensitivity to fixed hyperparameters.
 
 \section{Conclusion}
 
@@ -190,10 +206,10 @@ Among model-free agents, SARSA is the safer choice on stochastic Blackjack, whil
 
 \section*{AI Use Statement}
 
-I used GitHub Copilot and chat-based coding assistance to brainstorm report structure, refactor and debug parts of the experiment code, and improve wording and organization in the write-up. I reviewed, verified, and understand all assisted content, and all numerical claims in this draft were checked against the generated experiment outputs, local figure copies, and LaTeX tables.
+Once done with the preliminary draft, I used Claude Sonnet 4.6 to proofread and correct grammar, verify citation formatting, and make text concise where it was too verbose. I used GitHub Copilot to assist with figure alignment in LaTeX and to generate boilerplate code and bug fixes for the experiments and EDA code in the VS Code editor. I reviewed, verified, and understand all assisted content, and all analysis, interpretations, and conclusions are my own
 
 \section*{References}
 
-References and in-text citations are intentionally omitted in this working draft and will be added in the final pass.
+TBD.
 
 \end{document}
