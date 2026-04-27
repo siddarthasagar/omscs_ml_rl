@@ -9,6 +9,7 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{url}
+\usepackage{cite}
 
 \input{tables/report_numbers}
 
@@ -28,7 +29,7 @@ Dynamic Programming, Tabular Control, and a Double-DQN Ablation
 \pagestyle{empty}
 
 \begin{abstract}
-This report compares value iteration (VI), policy iteration (PI), SARSA, and tabular Q-learning on two contrasting Gymnasium environments: \texttt{Blackjack-v1} and \texttt{CartPole-v1}. Blackjack is a small stochastic MDP with an exact tabular model, while CartPole is a continuous control problem that requires discretization for both dynamic programming and tabular reinforcement learning. All comparisons aggregate \NumSeeds independent seeds (\SeedList). The core findings align with the assignment goals. PI converges in fewer planning iterations than VI on both tasks while matching or slightly exceeding VI final performance. On Blackjack, dynamic programming dominates tabular control and SARSA is more stable than Q-learning under a shared exploration schedule. On CartPole, tuned Q-learning is the strongest tabular model-free method, but both DP methods on the default grid still outperform it in final episode length. A coarse CartPole grid appears deceptively strong, while a fine grid collapses under sparse coverage and much larger planning cost. In the optional extra-credit study, vanilla DQN is competitive with tuned SARSA but does not surpass tuned tabular Q-learning under a 2k-episode budget, and Double DQN underperforms vanilla DQN in this setting.
+This report compares value iteration (VI), policy iteration (PI), SARSA, and tabular Q-learning on two contrasting Gymnasium environments: \texttt{Blackjack-v1} and \texttt{CartPole-v1}~\cite{towers2024gymnasium}. Blackjack is a small stochastic MDP with an exact tabular model, while CartPole is a continuous control problem that requires discretization for both dynamic programming and tabular reinforcement learning. All comparisons aggregate \NumSeeds independent seeds (\SeedList). The core findings align with the assignment goals. PI converges in fewer planning iterations than VI on both tasks while matching or slightly exceeding VI final performance. On Blackjack, dynamic programming dominates tabular control and SARSA is more stable than Q-learning under a shared exploration schedule. On CartPole, tuned Q-learning is the strongest tabular model-free method, but both DP methods on the default grid still outperform it in final episode length. A coarse CartPole grid appears deceptively strong, while a fine grid collapses under sparse coverage and much larger planning cost. In the optional extra-credit study, vanilla DQN is competitive with tuned SARSA but does not surpass tuned tabular Q-learning under a 2k-episode budget, and Double DQN underperforms vanilla DQN in this setting.
 \end{abstract}
 
 \section{Introduction}
@@ -36,7 +37,7 @@ This report compares value iteration (VI), policy iteration (PI), SARSA, and tab
 This assignment asks how model structure, discretization, and update rules change reinforcement-learning behavior on two very different MDPs. Blackjack is discrete, stochastic, and naturally tabular: the agent chooses between \emph{hit} and \emph{stick}, and the terminal reward is positive for a win, negative for a loss, and zero for a draw. CartPole is a continuous control problem with two actions, pushing the cart left or right, and it provides a reward of $+1$ for every time step that the pole remains balanced. These environments are interesting to study together because they contrast a finite game of chance against a physics-based control problem where state abstraction quality directly affects planning and learning.
 
 \paragraph{MDP Overview.}
-Blackjack has a discrete state space defined by the tuple $(p, d, u)$ of player sum, dealer up-card, and usable-ace flag; its action space is $\{\text{hit}, \text{stick}\}$ and its terminal reward is $+1$ for a win, $0$ for a draw, and $-1$ for a loss. CartPole has a continuous state space $(x, \dot{x}, \theta, \dot{\theta})$; its action space is $\{\text{push left}, \text{push right}\}$ and it yields reward $+1$ per time step until failure. The pair is useful because it contrasts a small stochastic MDP that is naturally tabular against a continuous control task whose state must be discretized before applying dynamic programming or tabular reinforcement learning.
+Blackjack has a discrete state space defined by the tuple $(p, d, u)$ of player sum, dealer up-card, and usable-ace flag; its action space is $\{\text{hit}, \text{stick}\}$ and its terminal reward is $+1$ for a win, $0$ for a draw, and $-1$ for a loss~\cite{sutton2018reinforcement}. CartPole has a continuous state space $(x, \dot{x}, \theta, \dot{\theta})$; its action space is $\{\text{push left}, \text{push right}\}$ and it yields reward $+1$ per time step until failure~\cite{barto1983neuronlike}. The pair is useful because it contrasts a small stochastic MDP that is naturally tabular against a continuous control task whose state must be discretized before applying dynamic programming or tabular reinforcement learning.
 
 The experiments are organized around three questions. First, how do VI and PI compare in convergence speed and final policy quality when a model is available? Second, how do SARSA and Q-learning differ in sample efficiency, stability, and final return under matched and tuned exploration schedules? Third, how much of CartPole performance is driven by discretization rather than by the learning algorithm itself? All main comparisons average over \NumSeeds seeds (\SeedList), and the total wall-clock across the reported experiments is \WallClockTotal.
 
@@ -51,7 +52,7 @@ The Blackjack planner uses an exact analytic model with \BJNStates states built 
 
 \subsection{Dynamic Programming}
 
-VI and PI were run with discount $\gamma = 0.99$ and convergence tolerance $\delta = 10^{-6}$ after validating both hyperparameters. VI works by repeatedly applying the Bellman optimality backup to every state until the value function stabilizes. PI instead alternates between evaluating the current policy and then improving it greedily with respect to that value estimate. In this project, both methods were applied to the exact Blackjack model and to fitted CartPole models built from discretized transitions. For VI, convergence was measured by the maximum change in the value function, $\max_s |V_{k+1}(s) - V_k(s)| < \delta$. For PI, convergence was defined by zero policy changes after a policy-improvement step. The hyperparameter sweeps showed that $\gamma$ materially affected policy quality on both tasks, while $\delta$ mainly changed runtime once it was sufficiently small.
+VI and PI were run with discount $\gamma = 0.99$ and convergence tolerance $\delta = 10^{-6}$ after validating both hyperparameters. VI works by repeatedly applying the Bellman optimality backup to every state until the value function stabilizes. PI instead alternates between evaluating the current policy and then improving it greedily with respect to that value estimate~\cite{sutton2018reinforcement}. In this project, both methods were applied to the exact Blackjack model and to fitted CartPole models built from discretized transitions. For VI, convergence was measured by the maximum change in the value function, $\max_s |V_{k+1}(s) - V_k(s)| < \delta$. For PI, convergence was defined by zero policy changes after a policy-improvement step. The hyperparameter sweeps showed that $\gamma$ materially affected policy quality on both tasks, while $\delta$ mainly changed runtime once it was sufficiently small.
 
 For reproducibility, the DP validation sweeps used $\gamma \in \{0.85, 0.90, 0.95, 0.99\}$ and $\delta \in \{10^{-2}, 10^{-3}, 10^{-4}, 10^{-6}\}$. On Blackjack, that sweep changed validation return over roughly $[-0.0408, -0.0380]$ while moving VI from 6 to 9 sweeps; on default-grid CartPole, it moved VI from 87 to 1376 sweeps and PI from 9 to 10 iterations while keeping evaluation performance in a relatively narrow range around 455--465 steps.
 
@@ -67,7 +68,7 @@ x &: \{-2.4, -0.8, 0.8, 2.4\}, \\
 
 \subsection{Model-Free Learning}
 
-All tabular model-free agents used decaying $\epsilon$-greedy exploration. SARSA is on-policy because its bootstrap target uses the next action actually selected by the current exploratory policy. Q-learning is off-policy because it backs up the greedy best next-action value even when the behavior policy is still exploring. The tabular model-free agents therefore use the following updates:
+All tabular model-free agents used decaying $\epsilon$-greedy exploration. SARSA is on-policy because its bootstrap target uses the next action actually selected by the current exploratory policy. Q-learning is off-policy because it backs up the greedy best next-action value even when the behavior policy is still exploring~\cite{sutton2018reinforcement}. The tabular model-free agents therefore use the following updates:
 
 \begin{align}
 Q(s_t, a_t) &\leftarrow Q(s_t, a_t) + \alpha \bigl[r_{t+1} \notag \\
@@ -199,7 +200,7 @@ The wall-clock result is important because it moderates the usual claim that mod
 
 \subsection{Extra Credit: Vanilla DQN vs. Double DQN}
 
-For extra credit, I implemented a small replay-based DQN with a 64-unit hidden layer, replay buffer size 10,000, batch size 64, target-network refresh every 500 steps, and 2000 training episodes. Unlike tabular Q-learning, which stores a separate value for each discrete state-action pair, DQN learns a neural approximation to $Q(s,a)$ and stabilizes training with replay memory and a delayed target network. I then compared a vanilla target against a Double DQN target, where Double DQN decouples action selection from target evaluation to reduce overestimation. The result is mixed rather than triumphant. Vanilla DQN reached \VanillaDQNEvalEpLen greedy-evaluation mean episode length, Double DQN reached only \DoubleDQNEvalEpLen, and neither variant satisfied the convergence rule within the 2k-episode budget. Tuned tabular Q-learning remained strongest at \DQNQLBaseline. Because the extra-credit run was time-boxed, these DQN hyperparameters were held fixed rather than swept systematically, so this section should be read as an ablation under one reasonable configuration rather than a fully tuned deep-RL benchmark.
+For extra credit, I implemented a small replay-based DQN with a 64-unit hidden layer, replay buffer size 10,000, batch size 64, target-network refresh every 500 steps, and 2000 training episodes. Unlike tabular Q-learning, which stores a separate value for each discrete state-action pair, DQN learns a neural approximation to $Q(s,a)$ and stabilizes training with replay memory and a delayed target network~\cite{mnih2015human}. I then compared a vanilla target against a Double DQN target~\cite{vanhasselt2016deep,hessel2018rainbow}, where Double DQN decouples action selection from target evaluation to reduce overestimation. The result is mixed rather than triumphant. Vanilla DQN reached \VanillaDQNEvalEpLen greedy-evaluation mean episode length, Double DQN reached only \DoubleDQNEvalEpLen, and neither variant satisfied the convergence rule within the 2k-episode budget. Tuned tabular Q-learning remained strongest at \DQNQLBaseline. Because the extra-credit run was time-boxed, these DQN hyperparameters were held fixed rather than swept systematically, so this section should be read as an ablation under one reasonable configuration rather than a fully tuned deep-RL benchmark.
 
 \begin{table}[t]
 \caption{Extra-credit DQN summary on CartPole.}
@@ -220,8 +221,7 @@ Among model-free agents, SARSA is the safer choice on stochastic Blackjack, whil
 
 Once done with the preliminary draft, I used Claude Sonnet 4.6 to proofread and correct grammar, verify citation formatting, and make text concise where it was too verbose. I used GitHub Copilot to assist with figure alignment in LaTeX and to generate boilerplate code and bug fixes for the experiments and EDA code in the VS Code editor. I reviewed, verified, and understand all assisted content, and all analysis, interpretations, and conclusions are my own
 
-\section*{References}
-
-TBD.
+\bibliographystyle{IEEEtran}
+\bibliography{references}
 
 \end{document}

@@ -23,6 +23,8 @@ tmp/
 **/*.fls
 **/*.fdb_latexmk
 **/PineTools_splits
+**/*.bbl
+**/*.blg
 
 **/*.tree
 omscs_ml_rl.egg-info/
